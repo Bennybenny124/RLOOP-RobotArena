@@ -1,3 +1,5 @@
+> **Historical draft, superseded on merge:** This v1.0 document is retained for historical reference, including its original 46-sub-issue proposal. The new canonical rules are in [docs/spec.md](docs/spec.md) and Git workflow is in [CONTRIBUTING.md](CONTRIBUTING.md). Do not follow the `develop` workflow or original Box2D requirement here after the v1.1 documentation PR is merged.
+
 # RLOOP 規格與開發計畫
 
 兩方機器人對戰競技場｜PvP / PvC / CvC｜C++ 核心 + DQN 訓練 + UE5 呈現
