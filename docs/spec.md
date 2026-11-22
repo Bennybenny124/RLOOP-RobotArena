@@ -1,6 +1,6 @@
-# RLOOP — 遊戲與技術規格 v1.1（PR 草案）
+# RLOOP — 遊戲與技術規格 v1.1
 
-> **權威規格候選版**：收錄截至 2026-11-19 已確認的機制；合併 PR 後才正式取代 [v1.0](../RLOOP_spec_v1.0.md)。
+> **權威規格**：收錄截至 2026-11-19 已確認的機制，取代 [v1.0](archive/RLOOP_spec_v1.0.md)（v1.0 保留於 `docs/archive/` 作歷史參考）。
 > 原版中的「建議」與未核准的數值仍然是候選設計。協作流程請以 [CONTRIBUTING.md](../CONTRIBUTING.md) 為準。
 
 雙方機器人對戰競技場｜PvP / PvC / CvC｜C++ Core + Python DQN + UE5。
@@ -169,7 +169,7 @@
 
 | 決策 | 結果 |
 | --- | --- |
-| Git workflow | 單一 `main` + feature branches + PR；Conventional Commits + Type/Area/Priority |
+| Git workflow | 單一 `main` + feature branches + PR；merge commit 保留完整 commit 歷史；Conventional Commits；Issue 以 Type/Area/Priority 分類（內文標註即可，labels 可選）；文件隨 PR 同步更新 |
 | 開發策略 | 垂直切片、Issues 分批建立 |
 | G1 | 位移後同時判定攻擊，並同時結算雙方傷害 |
 | G2 | 成功發射即消耗冷卻並重置脫戰計時；冷卻中的按鍵無效 |
@@ -196,13 +196,13 @@ UE5 Core 串接與 ONNX inference 以**早期 feasibility spike** 驗證，不�
 
 ## 4. GitHub conventions
 
-請以 [CONTRIBUTING.md](../CONTRIBUTING.md) 為準。**不使用 `develop`**；`main` 是唯一長期分支。所有程式與規格改動透過 feature branch → PR → review/CI → squash merge。Commit 使用 Conventional Commits；Issue 使用 Type／Area／Priority labels。Release tag 採 `v0.1.0` 等版本號。
+請以 [CONTRIBUTING.md](../CONTRIBUTING.md) 為準。**不使用 `develop`**；`main` 是唯一長期分支。所有程式與規格改動透過 feature branch → PR → review/CI → merge commit（保留完整 commit 歷史，不使用 squash）。Commit 使用 Conventional Commits；Issue 以 Type／Area／Priority 分類，於內文 `## Classification` 標註即可，repository labels 為可選。PR 若影響行為、流程、版本、指令或檔案位置，須在同一個 PR 內把 README、spec、ADR 等文件更新到 merge 後的狀態。Release tag 採 `v0.1.0` 等版本號。
 
 ## 5. 第一批 Issues：8 張
 
 這是已核准的第一批工作範圍，**實際 Issue 編號以 GitHub 回傳為準**；後續 backlog 分批產生，不直接把舊版 46 個條目全部建立。
 
-1. `docs: establish project conventions and specifications` — 本次規格及協作文件，應在 PR review/merge 後才算完成。
+1. `docs: establish project conventions and specifications` — 規格及協作文件（Issue #1）。
 2. `build: initialize C++ project and CI` — headless Core 與自動化 build/test 骨架。
 3. `feat: implement deterministic world simulation` — `reset(seed, config)`、`step(actions)` 與固定 dt。
 4. `feat: implement robot configuration and actions` — robot configs、18 actions、正規化與驗證。
