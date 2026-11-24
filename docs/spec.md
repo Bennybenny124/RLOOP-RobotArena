@@ -14,11 +14,17 @@
 - **PvC**：玩家對 RL agent（開發初期先以 rule-based 教官代打，agent 訓練完成後替換）
 - **CvC**：RL agent 對 RL agent
 - 技術分層：
-  - `core`（C++，不依賴 UE5）：固定步長模擬、kinematic 碰撞與推箱、戰鬥規則、observation、教官、replay 序列化
+  - C++ Core（原始碼位於 `Source/RLOOP_RobotArena/Core*.h` / `Core*.cpp`，CMake target `rloop_core`，不依賴 UE5）：固定步長模擬、kinematic 碰撞與推箱、戰鬥規則、observation、教官、replay 序列化
   - `bindings`（pybind11）：把環境 expose 給 Python
-  - `training`（Python，全專案唯一使用 Python 的部分）：DQN、對手池、評測
-  - `ue5`：渲染、玩家輸入、PvC 模型推論、replay 播放，直接呼叫 `core`
+  - `RL/`（Python 訓練目錄，全專案唯一使用 Python 的部分）：DQN、對手池、評測
+  - UE5（`Source/RLOOP_RobotArena/Arena.*`、`Robot.*` 等接入層）：渲染、玩家輸入、PvC 模型推論、replay 播放，直接呼叫 `core`
 - 建議：`core` 可 headless 執行，訓練與 UE5 共用同一份規則與 observation 程式碼，避免兩套實作不一致
+
+### 1.1.1 Issue #3 最小模擬契約
+
+目前 headless Core 提供 `rloop::CoreArena::reset(seed, config)`、`step(ActionsV1)`、`state()`，由同一個 CoreArena 管理兩個 CoreRobot，並以整數 tick 和 `1 / tickRateHz` 固定 dt 推進。版本化 `ActionV1`、`WorldStateV1`、`EventV1`、`StepResultV1` 與使用方式見 [Core simulation v1](core-simulation-v1.md)。
+
+Core 使用 cm、cm/s，XY 平面原點為 (0, 0)，UE5 地板為 Z=0；場地界線為 ±width/2、±height/2。障礙物採軸對齊矩形中心與半尺寸表示。現階段只限制機器人中心點不超出場地，未實作機器人／障礙物碰撞、推箱、完整攻擊或 HP；無戰鬥的最小空場對局在 maxTicks 結束為平手。這不是正式戰鬥規則，後續由 #4、#5、#6 補齊。測試數值是可調整 fixture，非正式平衡設定。
 
 ### 1.2 競技場
 
