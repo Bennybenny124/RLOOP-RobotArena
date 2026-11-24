@@ -13,7 +13,13 @@ assignees: []
 
 ## Acceptance criteria
 - [ ]
+- [ ] Affected documents (README, spec, ADR, etc.) updated to their post-merge state
 
 ## Dependencies / Related
+
+## Classification
+- Type: `type:...`
+- Area: `area:...`
+- Priority: `priority:P...`
 
 ## Notes / Open decisions

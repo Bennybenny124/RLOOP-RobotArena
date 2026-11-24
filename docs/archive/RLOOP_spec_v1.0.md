@@ -1,4 +1,4 @@
-> **Historical draft, superseded on merge:** This v1.0 document is retained for historical reference, including its original 46-sub-issue proposal. The new canonical rules are in [docs/spec.md](docs/spec.md) and Git workflow is in [CONTRIBUTING.md](CONTRIBUTING.md). Do not follow the `develop` workflow or original Box2D requirement here after the v1.1 documentation PR is merged.
+> **Historical draft, superseded:** This v1.0 document is retained for historical reference, including its original 46-sub-issue proposal. The canonical rules are in [docs/spec.md](../spec.md) and the Git workflow is in [CONTRIBUTING.md](../../CONTRIBUTING.md). Do not follow the `develop` workflow or the original Box2D requirement described here.
 
 # RLOOP 規格與開發計畫
 
