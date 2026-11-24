@@ -66,7 +66,7 @@ int main() {
     REQUIRE(a.reset(99, bad) == ResetStatus::InvalidConfig && equal(a.state(), initial));
     for (std::uint64_t t = 0; t < config.maxTicks; ++t) {
         ActionsV1 actions{};
-        if (t < 300) { actions[0].movement = {1, 0}; actions[1].movement = {-1, 0}; }
+        if (t < 300) { actions[0].movement = {-1, 0}; actions[1].movement = {1, 0}; }
         else if (t < 600) { actions[0].movement = {0, 1}; actions[1].movement = {0, -1}; }
         actions[0].attack = (t % 2 == 0); // Reserved; no combat effect.
         auto reverse = actions; std::swap(reverse[0], reverse[1]);
@@ -78,11 +78,11 @@ int main() {
         REQUIRE(equal(x.state.robots[0].position, z.state.robots[1].position));
         REQUIRE(equal(x.state.robots[1].position, z.state.robots[0].position));
         if (t == 0) {
-            REQUIRE(equal(x.state.robots[0].position, {-385, 0}));
+            REQUIRE(equal(x.state.robots[0].position, {-395, 0}));
             REQUIRE(x.events.size() == 2 && x.events[0].kind == EventKind::Moved);
         }
-        if (t == 299) REQUIRE(equal(x.state.robots[0].position, {650, 0}));
-        if (t == 599) REQUIRE(equal(x.state.robots[0].position, {650, 550}));
+        if (t == 299) REQUIRE(equal(x.state.robots[0].position, {-625, 0}));
+        if (t == 599) REQUIRE(equal(x.state.robots[0].position, {-625, 525}));
         if (t == 600) REQUIRE(x.events.empty());
         if (t + 1 < config.maxTicks) REQUIRE(x.state.result == MatchResult::Running);
         else REQUIRE(x.events.size() == 1 && x.events[0].kind == EventKind::MatchEnded &&

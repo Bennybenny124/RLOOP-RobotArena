@@ -55,6 +55,8 @@ struct ArenaConfig {
     std::array<RobotConfig, 2> robots{{{{-390.0, 0.0}, RobotType::Tank},
                                       {{390.0, 0.0}, RobotType::Scout}}};
     std::vector<ObstacleStateV1> obstacles;
+    double pushSpeedMultiplier = 0.5;
+    double boxSpeedCap = 150.0; // provisional cm/s, independent of robot type
 };
 
 // Legacy low-level vector intent (v1). Discrete v2 is the controller contract.

@@ -18,6 +18,7 @@ private:
     ArenaConfig config_{};
     std::string lastError_;
     std::array<CoreRobot, 2> robots_{};
+    std::vector<ObstacleStateV1> obstacles_;
     std::uint64_t seed_ = 0;
     std::uint64_t tick_ = 0;
     MatchResult result_ = MatchResult::NotStarted;
