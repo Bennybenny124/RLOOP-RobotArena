@@ -104,6 +104,7 @@ MovementResult resolveMovement(const ArenaConfig& config,
     double remaining=1.0/static_cast<double>(config.tickRateHz);
     const std::size_t budget=16+8*n;
     std::size_t iteration=0;
+    bool limited=false;
     for(;remaining>0 && iteration<budget;++iteration) {
         std::vector<std::size_t> groups(n);
         std::iota(groups.begin(),groups.end(),std::size_t{0});
@@ -162,7 +163,7 @@ MovementResult resolveMovement(const ArenaConfig& config,
                 break;
             }
         }
-        if(!resolved) { remaining=0; break; }
+        if(!resolved) { limited=true; break; }
         if(std::none_of(vel.begin(),vel.end(),moving)) { remaining=0; break; }
         double t=remaining;
         for(std::size_t i=0;i<n;++i) {
@@ -175,6 +176,6 @@ MovementResult resolveMovement(const ArenaConfig& config,
         remaining-=t;
     }
     for(std::size_t i=2;i<n;++i) obstacles[i-2].center=bodies[i].p;
-    return {{bodies[0].p,bodies[1].p},remaining>0};
+    return {{bodies[0].p,bodies[1].p},limited || remaining>0};
 }
 }

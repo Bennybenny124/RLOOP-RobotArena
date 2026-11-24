@@ -52,7 +52,7 @@ AArena::AArena()
     DebugCamera->SetAbsolute(true, true, true);
     DebugCamera->SetProjectionMode(ECameraProjectionMode::Orthographic);
     DebugCamera->SetOrthoWidth(1800.0f);
-    DebugCamera->bAutoActivate = true;
+    DebugCamera->SetAutoActivate(true);
 
     // Provisional fixtures for verifying debug shapes, not a gameplay map.
     FArenaDebugObstacle Fixed;
@@ -250,7 +250,7 @@ void AArena::DrawDebugArena() const
             const auto& Ray = LastRay[Index];
             const FColor RayColor = Ray.resultCode == rloop::AttackResult::Blocked ? FColor::Red :
                 Ray.resultCode == rloop::AttackResult::Reduced ? FColor::Yellow :
-                Ray.resultCode == rloop::AttackResult::OutOfRange ? FColor::Silver : Color;
+                Ray.resultCode == rloop::AttackResult::OutOfRange ? FColor(192,192,192) : Color;
             DrawDebugLine(World, FVector(Ray.from.x,Ray.from.y,60),
                 FVector(Ray.to.x,Ray.to.y,60), RayColor, false, 0.0f, 0, 5.0f);
         }

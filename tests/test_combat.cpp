@@ -63,5 +63,15 @@ int main() {
     s=a.stepDiscrete({{{7},{0}}}); REQUIRE(attack(s,0)->resultCode==AttackResult::Blocked);
     c.obstacles.clear(); REQUIRE(a.reset(1,c)==ResetStatus::Ready);
     s=a.stepDiscrete({{{7},{0}}}); REQUIRE(attack(s,0)->resultCode==AttackResult::Hit);
+    // Identical healing over one second across tick rates, with an exact
+    // fractional-unit accumulator (and no tolerance-based HP comparison).
+    for(unsigned hz: {10u, 60u, 120u}) {
+        c=fixture(); c.tickRateHz=hz; c.maxTicks=1000; c.outOfCombatDelayMs=0;
+        c.robotTypes[1].regenPerSecond=hpScale+1;
+        REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+        s=a.stepDiscrete({{{1},{0}}});
+        for(unsigned i=0;i<hz;++i) s=a.stepDiscrete({});
+        REQUIRE(s.state.robots[1].hp==85*hpScale+1);
+    }
     std::cout<<"combat passed\n";
 }
