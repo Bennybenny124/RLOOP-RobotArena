@@ -15,18 +15,29 @@ bool withinArena(Vec2 p, double halfWidth, double halfHeight) noexcept {
     return finiteVec(p) && std::abs(p.x) <= halfWidth && std::abs(p.y) <= halfHeight;
 }
 
-bool validConfig(const ArenaConfig& config) noexcept {
+std::string configError(const ArenaConfig& config) {
     if (!std::isfinite(config.width) || config.width <= 0.0 ||
         !std::isfinite(config.height) || config.height <= 0.0 ||
-        config.tickRateHz == 0 || config.maxTicks == 0) {
-        return false;
+        config.tickRateHz == 0 || config.tickRateHz > 1000 || config.maxTicks == 0) {
+        return "arena dimensions/tickRateHz/maxTicks invalid";
+    }
+    for (std::size_t i = 0; i < config.robotTypes.size(); ++i) {
+        const auto& t = config.robotTypes[i];
+        const std::string prefix = "robotTypes[" + std::to_string(i) + "].";
+        if (t.maxHp <= 0 || t.maxHp > maxHpUnits) return prefix + "maxHp invalid or missing";
+        if (t.attackDamage <= 0 || t.attackDamage > maxHpUnits) return prefix + "attackDamage invalid or missing";
+        if (t.cooldownMs == 0) return prefix + "cooldownMs invalid or missing";
+        if (!std::isfinite(t.attackRange) || t.attackRange <= 0) return prefix + "attackRange invalid or missing";
+        if (!std::isfinite(t.moveSpeed) || t.moveSpeed < 0) return prefix + "moveSpeed invalid or missing";
+        if (t.regenPerSecond < 0 || t.regenPerSecond > maxHpUnits) return prefix + "regenPerSecond invalid or missing";
+        if (!std::isfinite(t.halfExtent) || t.halfExtent <= 0) return prefix + "halfExtent invalid or missing";
     }
     const double hw = config.width / 2.0;
     const double hh = config.height / 2.0;
     for (const auto& robot : config.robots) {
         if (!withinArena(robot.spawn, hw, hh) ||
-            !std::isfinite(robot.moveSpeed) || robot.moveSpeed < 0.0) {
-            return false;
+            static_cast<std::size_t>(robot.type) >= config.robotTypes.size()) {
+            return "robot spawn/type invalid";
         }
     }
     for (std::size_t i = 0; i < config.obstacles.size(); ++i) {
@@ -36,34 +47,35 @@ bool validConfig(const ArenaConfig& config) noexcept {
             !withinArena(o.center, hw, hh) ||
             o.halfExtent.x > hw - std::abs(o.center.x) ||
             o.halfExtent.y > hh - std::abs(o.center.y)) {
-            return false;
+            return "obstacle bounds/type invalid";
         }
         for (std::size_t j = 0; j < i; ++j) {
-            if (config.obstacles[j].id == o.id) return false;
+            if (config.obstacles[j].id == o.id) return "duplicate obstacle ID";
         }
     }
-    return true;
+    return {};
 }
 
 bool validAction(const ActionV1& action) noexcept {
     return finiteVec(action.movement) &&
-           std::hypot(action.movement.x, action.movement.y) <= 1.0;
+           std::hypot(action.movement.x, action.movement.y) <= 1.0 + 1e-15;
 }
 
 } // namespace
 
 ResetStatus CoreArena::reset(std::uint64_t seed, const ArenaConfig& config) {
-    if (!validConfig(config)) return ResetStatus::InvalidConfig;
+    lastError_ = configError(config);
+    if (!lastError_.empty()) return ResetStatus::InvalidConfig;
     config_ = config;
     seed_ = seed; // Reserved for future seeded layout generation; no random draws in v1.
     tick_ = 0;
     result_ = MatchResult::Running;
-    for (std::size_t i = 0; i < robots_.size(); ++i) robots_[i].reset(config_.robots[i]);
+    for (std::size_t i = 0; i < robots_.size(); ++i) robots_[i].reset(config_.robots[i], config_.robotTypes[static_cast<std::size_t>(config_.robots[i].type)]);
     return ResetStatus::Ready;
 }
 
-WorldStateV1 CoreArena::state() const {
-    WorldStateV1 snapshot;
+WorldStateV2 CoreArena::state() const {
+    WorldStateV2 snapshot;
     if (result_ == MatchResult::NotStarted) return snapshot;
     snapshot.seed = seed_;
     snapshot.tick = tick_;
@@ -82,7 +94,15 @@ bool CoreArena::isTerminal() const noexcept {
            result_ == MatchResult::Player1Win;
 }
 
-StepResultV1 CoreArena::step(const ActionsV1& actions) {
+StepResultV2 CoreArena::stepDiscrete(const ActionsV2& actions) {
+    ActionsV1 decoded{};
+    if (result_ == MatchResult::NotStarted || isTerminal()) return step(decoded);
+    if (!decodeAction(actions[0], decoded[0]) || !decodeAction(actions[1], decoded[1]))
+        return {StepStatus::InvalidAction, state(), {}};
+    return step(decoded);
+}
+
+StepResultV2 CoreArena::step(const ActionsV1& actions) {
     if (result_ == MatchResult::NotStarted) return {StepStatus::NotInitialized, state(), {}};
     if (isTerminal()) return {StepStatus::Terminal, state(), {}};
     if (!validAction(actions[0]) || !validAction(actions[1])) {

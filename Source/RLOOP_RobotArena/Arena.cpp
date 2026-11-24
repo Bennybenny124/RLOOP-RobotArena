@@ -65,7 +65,7 @@ void AArena::DrawDebugArena() const
 {
     UWorld* World = GetWorld();
     if (!World) return;
-    const rloop::WorldStateV1 State = Simulation.state();
+    const rloop::WorldStateV2 State = Simulation.state();
     if (State.result == rloop::MatchResult::NotStarted) return;
 
     const double HalfWidth = State.width / 2.0;

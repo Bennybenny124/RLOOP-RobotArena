@@ -12,7 +12,7 @@ using namespace rloop;
 
 bool equal(Vec2 a, Vec2 b) { return a.x == b.x && a.y == b.y; }
 
-bool equal(const WorldStateV1& a, const WorldStateV1& b) {
+bool equal(const WorldStateV2& a, const WorldStateV2& b) {
     if (a.seed != b.seed || a.tick != b.tick || a.tickRateHz != b.tickRateHz ||
         a.maxTicks != b.maxTicks || a.width != b.width || a.height != b.height ||
         a.result != b.result || a.obstacles.size() != b.obstacles.size()) return false;
@@ -33,6 +33,16 @@ bool equal(const EventV1& a, const EventV1& b) {
 
 int main() {
     ArenaConfig config;
+    config.robots[1].type = RobotType::Tank;
+    for (int i = 0; i < 18; ++i) {
+        ActionV1 decoded;
+        REQUIRE(decodeAction({i}, decoded));
+        REQUIRE(decoded.attack == (i % 2 != 0));
+        REQUIRE(std::abs(std::hypot(decoded.movement.x, decoded.movement.y) - (i < 2 ? 0 : 1)) < 1e-12);
+        REQUIRE(encodeAction(static_cast<int>(std::round(decoded.movement.x)), static_cast<int>(std::round(decoded.movement.y)), decoded.attack).value == i);
+    }
+    ActionV1 ignored;
+    REQUIRE(!decodeAction({18}, ignored) && !decodeAction({-1}, ignored));
     CoreArena a, b, swapped;
     REQUIRE(a.step({}).status == StepStatus::NotInitialized);
     REQUIRE(a.reset(42, config) == ResetStatus::Ready);
@@ -41,6 +51,10 @@ int main() {
     std::swap(reverseConfig.robots[0], reverseConfig.robots[1]);
     REQUIRE(swapped.reset(42, reverseConfig) == ResetStatus::Ready);
     const auto initial = a.state();
+    auto missing = config; missing.robotTypes[1] = {};
+    REQUIRE(a.reset(0, missing) == ResetStatus::InvalidConfig);
+    REQUIRE(a.lastError().find("maxHp") != std::string::npos);
+    REQUIRE(a.stepDiscrete({{{0},{18}}}).status == StepStatus::InvalidAction);
     REQUIRE(initial.tick == 0 && initial.seed == 42 && initial.result == MatchResult::Running);
     REQUIRE(initial.width == 1300 && initial.height == 1100 && initial.maxTicks == 3600);
     ActionsV1 invalid{};
