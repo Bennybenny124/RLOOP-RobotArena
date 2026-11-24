@@ -7,6 +7,12 @@
 #include "CoreArena.h"
 #include "Arena.generated.h"
 
+class UCameraComponent;
+class USceneComponent;
+
+UENUM(BlueprintType)
+enum class ERloopRobotType : uint8 { Tank, Scout, Ranged };
+
 USTRUCT(BlueprintType)
 struct FArenaDebugObstacle
 {
@@ -39,17 +45,43 @@ protected:
     virtual void BeginPlay() override;
 
 private:
-    // Temporary visualization only. World XY plane at Z=0; ignore actor transform.
+    // Temporary debug presentation. World XY plane at Z=0; ignore actor transform.
     UPROPERTY(EditAnywhere, Category = "Arena Debug")
     bool bDrawDebugArena = true;
 
     UPROPERTY(EditAnywhere, Category = "Arena Debug", meta = (ClampMin = "1.0"))
     double DebugShapeHeightCm = 100.0;
 
-    // Optional visualization-only fixtures; these are copied into Core on reset.
+    // Optional editable fixtures; copied into Core at BeginPlay.
     UPROPERTY(EditAnywhere, Category = "Arena Debug")
     TArray<FArenaDebugObstacle> DebugObstacles;
 
+    UPROPERTY(EditAnywhere, Category = "Local PvP")
+    bool bLocalPvP = true;
+
+    UPROPERTY(EditAnywhere, Category = "Local PvP")
+    bool bUseDebugCamera = true;
+
+    UPROPERTY(EditAnywhere, Category = "Local PvP")
+    ERloopRobotType Player0Type = ERloopRobotType::Tank;
+
+    UPROPERTY(EditAnywhere, Category = "Local PvP")
+    ERloopRobotType Player1Type = ERloopRobotType::Scout;
+
+    UPROPERTY(VisibleAnywhere, Category = "Local PvP")
+    TObjectPtr<USceneComponent> DebugRoot;
+
+    UPROPERTY(VisibleAnywhere, Category = "Local PvP")
+    TObjectPtr<UCameraComponent> DebugCamera;
+
+    rloop::ArenaConfig MatchConfig;
     rloop::CoreArena Simulation;
+    double Accumulator = 0;
+    bool bRestartHeld = false;
+    bool bConfigReady = false;
+    std::array<rloop::EventV2, 2> LastAttack{};
+    std::array<rloop::EventV2, 2> LastRay{};
+    std::array<double, 2> RaySeconds{};
+    void RestartMatch();
     void DrawDebugArena() const;
 };
