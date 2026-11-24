@@ -1,4 +1,6 @@
-# Core simulation v1 — Issue #3
+# Core simulation v1 — Issue #3 (historical)
+
+> Historical implementation snapshot before #4–#7. The current API, geometry, combat and viewer are documented in [Core simulation v2](core-simulation-v2.md). Do not use the v1 world/event types for new consumers.
 
 ## Ownership and source layout
 

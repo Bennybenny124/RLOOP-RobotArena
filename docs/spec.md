@@ -20,11 +20,11 @@
   - UE5（`Source/RLOOP_RobotArena/Arena.*`、`Robot.*` 等接入層）：渲染、玩家輸入、PvC 模型推論、replay 播放，直接呼叫 `core`
 - 建議：`core` 可 headless 執行，訓練與 UE5 共用同一份規則與 observation 程式碼，避免兩套實作不一致
 
-### 1.1.1 Issue #3 最小模擬契約
+### 1.1.1 Issue #3–#7 可玩垂直切片契約
 
-目前 headless Core 提供 `rloop::CoreArena::reset(seed, config)`、`step(ActionsV1)`、`state()`，由同一個 CoreArena 管理兩個 CoreRobot，並以整數 tick 和 `1 / tickRateHz` 固定 dt 推進。版本化 `ActionV1`、`WorldStateV1`、`EventV1`、`StepResultV1` 與使用方式見 [Core simulation v1](core-simulation-v1.md)。
+目前 headless Core 提供 `rloop::CoreArena::reset(seed, config)`、`stepDiscrete(ActionsV2)`、`state()`，由同一個 CoreArena 管理兩個 CoreRobot，以整數 tick 和固定 dt 推進。低階向量入口 `step(ActionsV1)` 保留。離散控制器介面、`WorldStateV2`、`EventV2`、`StepResultV2` 及具體數值契約見 [Core simulation v2](core-simulation-v2.md)。
 
-Core 使用 cm、cm/s，XY 平面原點為 (0, 0)，UE5 地板為 Z=0；場地界線為 ±width/2、±height/2。障礙物採軸對齊矩形中心與半尺寸表示。現階段只限制機器人中心點不超出場地，未實作機器人／障礙物碰撞、推箱、完整攻擊或 HP；無戰鬥的最小空場對局在 maxTicks 結束為平手。這不是正式戰鬥規則，後續由 #4、#5、#6 補齊。測試數值是可調整 fixture，非正式平衡設定。
+Core 使用 cm、cm/s，XY 平面原點為 (0,0)，UE5 地板為 Z=0，場地界線為 ±width/2、±height/2。已提供三種角色配置、18 actions、swept AABB 碰撞與箱組推動、同步 hitscan 戰鬥、固定精度 HP／回血與勝負判定。AArena 驅動固定步長本地雙人對局、讀取 Core snapshots/events；ARobot 提供鍵盤控制器。暫定幾何與數值皆列於 v2 契約，並非正式角色平衡或新核准規格。跨模組 replay 序列化／驗證仍屬 #8。
 
 ### 1.2 競技場
 
@@ -74,7 +74,7 @@ Core 使用 cm、cm/s，XY 平面原點為 (0, 0)，UE5 地板為 Z=0；場地�
 
 - 移動 9 種：不動 + 八方位（N、NE、E、SE、S、SW、W、NW）
 - 攻擊 2 種：否 / 是
-- 建議編碼：`action = move_id * 2 + attack`
+- 已採用建議編碼：`action = move_id * 2 + attack`；`ActionV2` 的 move_id 依序為不動、N、NE、E、SE、S、SW、W、NW（Core 的 N 為 +Y）
 - 移動與攻擊可同時進行，攻擊後無僵直
 - 斜向移動需正規化，確保各方向速度一致
 - 冷卻中或超距時仍可發出攻擊指令，只是無效（不做 action masking，由 agent 自己學）
@@ -107,7 +107,7 @@ Core 使用 cm、cm/s，XY 平面原點為 (0, 0)，UE5 地板為 Z=0；場地�
 - 牆壁、固定掩體及箱子不可互相穿透；箱子群組撞到障礙時限制合法位移。角落、箱組碰撞與雙人對推列入 regression tests。
 - 八方向斜向移動須正規化。固定模擬時間步長 `dt`，不使用加速度或動量來模擬推動。
 
-**仍待實作期確認**：箱組碰牆時是否允許沿牆滑動、機器人相互碰撞細節、幾何接觸容差，以及不同角色原始移速和 `v_max` 的對應；不得在實作中默默將候選設定當成既定需求。
+**暫定實作（待團隊驗證，不視為最終核准）**：機器人以正方形 AABB 表示，連鎖箱組碰牆／固定掩體停止整體速度，機器人相互迎面碰撞同步停止；接觸容差 1e-7 cm，箱子速限獨立配置。詳細 swept contact 契約見 [Core simulation v2](core-simulation-v2.md)。
 
 ### 1.7 脫戰回血（已確認）
 
