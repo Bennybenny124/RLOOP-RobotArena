@@ -17,7 +17,10 @@ bool equal(const WorldStateV2& a, const WorldStateV2& b) {
         a.maxTicks != b.maxTicks || a.width != b.width || a.height != b.height ||
         a.result != b.result || a.obstacles.size() != b.obstacles.size()) return false;
     for (std::size_t i = 0; i < 2; ++i)
-        if (!equal(a.robots[i].position, b.robots[i].position)) return false;
+        if (!equal(a.robots[i].position, b.robots[i].position) || a.robots[i].hp!=b.robots[i].hp ||
+            a.robots[i].maxHp!=b.robots[i].maxHp || a.robots[i].type!=b.robots[i].type ||
+            a.robots[i].cooldownTicks!=b.robots[i].cooldownTicks || a.robots[i].quietTicks!=b.robots[i].quietTicks ||
+            a.robots[i].halfExtent!=b.robots[i].halfExtent || a.robots[i].regenRemainder!=b.robots[i].regenRemainder) return false;
     for (std::size_t i = 0; i < a.obstacles.size(); ++i) {
         const auto& x = a.obstacles[i]; const auto& y = b.obstacles[i];
         if (x.id != y.id || x.type != y.type || !equal(x.center, y.center) ||
@@ -26,9 +29,10 @@ bool equal(const WorldStateV2& a, const WorldStateV2& b) {
     return true;
 }
 
-bool equal(const EventV1& a, const EventV1& b) {
+bool equal(const EventV2& a, const EventV2& b) {
     return a.kind == b.kind && a.player == b.player && equal(a.from, b.from) &&
-           equal(a.to, b.to) && a.result == b.result;
+           equal(a.to, b.to) && a.result == b.result && a.resultCode==b.resultCode &&
+           a.actualDamage==b.actualDamage && a.healed==b.healed && a.obstacleId==b.obstacleId;
 }
 
 int main() {
@@ -68,7 +72,6 @@ int main() {
         ActionsV1 actions{};
         if (t < 300) { actions[0].movement = {-1, 0}; actions[1].movement = {1, 0}; }
         else if (t < 600) { actions[0].movement = {0, 1}; actions[1].movement = {0, -1}; }
-        actions[0].attack = (t % 2 == 0); // Reserved; no combat effect.
         auto reverse = actions; std::swap(reverse[0], reverse[1]);
         const auto x = a.step(actions), y = b.step(actions), z = swapped.step(reverse);
         REQUIRE(x.status == StepStatus::Advanced && y.status == x.status && z.status == x.status);

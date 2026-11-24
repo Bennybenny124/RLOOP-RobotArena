@@ -1,5 +1,6 @@
 #include "CoreArena.h"
 #include "CoreKinematics.h"
+#include "CoreCombat.h"
 
 #include <algorithm>
 #include <cmath>
@@ -128,25 +129,53 @@ StepResultV2 CoreArena::step(const ActionsV1& actions) {
 
     const std::array<RobotStateV2,2> previous{robots_[0].state(),robots_[1].state()};
     const std::array<Vec2,2> before{previous[0].position,previous[1].position};
+    const auto beforeObstacles = obstacles_;
     const auto movement = resolveMovement(config_, previous, obstacles_, actions);
     const auto& next = movement.positions;
     for (std::size_t i = 0; i < robots_.size(); ++i) robots_[i].commitPosition(next[i]);
 
-    // Phase 3 (#6): evaluate both attacks against the shared post-movement
-    // state, then apply damage and recovery simultaneously. No combat yet.
-    std::vector<EventV1> events;
-    for (std::size_t i = 0; i < robots_.size(); ++i) {
-        if (before[i].x != next[i].x || before[i].y != next[i].y) {
-            events.push_back({EventKind::Moved, static_cast<std::uint32_t>(i),
-                              before[i], next[i], MatchResult::Running});
+    std::vector<EventV2> events;
+    for (std::size_t i=0;i<robots_.size();++i) {
+        if(before[i].x!=next[i].x || before[i].y!=next[i].y)
+            events.push_back({EventKind::Moved,static_cast<std::uint32_t>(i),before[i],next[i]});
+    }
+    for(std::size_t i=0;i<obstacles_.size();++i) {
+        const auto a=beforeObstacles[i].center,b=obstacles_[i].center;
+        if(a.x!=b.x || a.y!=b.y) {
+            EventV2 e; e.kind=EventKind::ObstacleMoved; e.from=a; e.to=b; e.obstacleId=obstacles_[i].id;
+            events.push_back(e);
+        }
+    }
+    if(movement.exhausted) { EventV2 e; e.kind=EventKind::MovementLimited; events.push_back(e); }
+
+    // Cooldowns elapse at the tick boundary; take one post-movement snapshot.
+    for(auto& robot:robots_) robot.advanceCooldown();
+    const std::array<RobotStateV2,2> post{robots_[0].state(),robots_[1].state()};
+    std::array<AttackDecision,2> attacks{};
+    for(std::size_t i=0;i<2;++i)
+        attacks[i]=evaluateAttack(post[i],robots_[i].config(),post[1-i],obstacles_,actions[i].attack);
+    // Both attack decisions precede any damage/cooldown/regen mutation.
+    for(std::size_t i=0;i<2;++i) {
+        const auto& shot=attacks[i];
+        if(shot.fired) robots_[i].recordShot(config_.tickRateHz);
+        if(shot.code!=AttackResult::None) {
+            EventV2 e; e.kind=EventKind::Attack; e.player=static_cast<std::uint32_t>(i);
+            e.from=shot.from; e.to=shot.to; e.resultCode=shot.code; e.actualDamage=shot.damage;
+            events.push_back(e);
+        }
+    }
+    for(std::size_t i=0;i<2;++i) {
+        const Hp healed=robots_[i].applyCombat(attacks[1-i].damage,attacks[i].fired,
+                                               config_.tickRateHz,config_.outOfCombatDelayMs);
+        if(healed>0) {
+            EventV2 e; e.kind=EventKind::Healed; e.player=static_cast<std::uint32_t>(i);
+            e.from=next[i]; e.to=next[i]; e.healed=healed; events.push_back(e);
         }
     }
     ++tick_;
-    if (tick_ == config_.maxTicks) {
-        result_ = MatchResult::Draw; // Temporary no-combat timeout; #6 compares HP ratios.
-        events.push_back({EventKind::MatchEnded, EventV1::noPlayer, {}, {}, result_});
-    }
-    return {StepStatus::Advanced, state(), std::move(events)};
+    result_=resolveMatch({robots_[0].state(),robots_[1].state()},tick_==config_.maxTicks);
+    if(isTerminal()) events.push_back({EventKind::MatchEnded,EventV2::noPlayer,{},{},result_});
+    return {StepStatus::Advanced,state(),std::move(events)};
 }
 
 } // namespace rloop

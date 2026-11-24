@@ -57,6 +57,7 @@ struct ArenaConfig {
     std::vector<ObstacleStateV1> obstacles;
     double pushSpeedMultiplier = 0.5;
     double boxSpeedCap = 150.0; // provisional cm/s, independent of robot type
+    std::uint32_t outOfCombatDelayMs = 3000; // provisional
 };
 
 // Legacy low-level vector intent (v1). Discrete v2 is the controller contract.
@@ -104,22 +105,27 @@ struct WorldStateV2 {
     MatchResult result = MatchResult::NotStarted;
 };
 
-enum class EventKind { Moved, MatchEnded };
-struct EventV1 {
-    static constexpr std::uint32_t schemaVersion = 1;
+enum class EventKind { Moved, MatchEnded, ObstacleMoved, Attack, Healed, MovementLimited };
+enum class AttackResult { None, OnCooldown, OutOfRange, Blocked, Reduced, Hit };
+struct EventV2 {
+    static constexpr std::uint32_t schemaVersion = 2;
     static constexpr std::uint32_t noPlayer = 2;
     EventKind kind = EventKind::Moved;
     std::uint32_t player = noPlayer;
     Vec2 from;
     Vec2 to;
     MatchResult result = MatchResult::Running;
+    AttackResult resultCode = AttackResult::None;
+    Hp actualDamage = 0;
+    Hp healed = 0;
+    std::uint32_t obstacleId = 0;
 };
 
 struct StepResultV2 {
     static constexpr std::uint32_t schemaVersion = 2;
     StepStatus status = StepStatus::NotInitialized;
     WorldStateV2 state;
-    std::vector<EventV1> events;
+    std::vector<EventV2> events;
 };
 
 } // namespace rloop
