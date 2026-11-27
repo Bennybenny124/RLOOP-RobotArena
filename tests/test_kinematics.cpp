@@ -384,5 +384,19 @@ int main() {
     r=a.step({{{4},{6}}}).state;
     REQUIRE(near(r.obstacles[1].center.x,s.obstacles[0].center.x) && near(r.obstacles[1].center.y,s.obstacles[0].center.y));
     REQUIRE(near(r.obstacles[0].center.x,s.obstacles[1].center.x) && near(r.obstacles[0].center.y,s.obstacles[1].center.y));
+    // One robot reaches the front box through two distinct paths. It
+    // contributes once, not twice, even when the configured cap is high.
+    c=fixture(); c.boxSpeedCap=20; c.robotTypes[0].halfExtent=10;
+    c.map.robots[0].spawn={-15,0};
+    c.map.obstacles={box(1,0,-5),box(2,0,5),box(3,10,0)};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{6},{0}}}).state;
+    REQUIRE(near(s.obstacles[0].center.x,5) && near(s.obstacles[1].center.x,5));
+    REQUIRE(near(s.obstacles[2].center.x,15));
+    std::reverse(c.map.obstacles.begin(),c.map.obstacles.end());
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    r=a.step({{{6},{0}}}).state;
+    REQUIRE(near(r.obstacles[0].center.x,15));
+    REQUIRE(near(r.obstacles[1].center.x,5) && near(r.obstacles[2].center.x,5));
     std::cout << "kinematics passed\n";
 }

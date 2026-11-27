@@ -56,12 +56,6 @@ Vec2 projectFixedVelocity(const Body& body,const std::vector<Body>& bodies,Vec2 
     }
     return projected;
 }
-// Combine independent restrictions on the same original velocity without
-// changing its sign or allowing obstacle traversal order to affect results.
-Vec2 restrictVelocity(Vec2 a,Vec2 b) {
-    return {std::abs(a.x)<=std::abs(b.x)?a.x:b.x,
-            std::abs(a.y)<=std::abs(b.y)?a.y:b.y};
-}
 double wallTime(const Body& b,Vec2 v,Vec2 half,double t) {
     if (v.x>0) t=std::min(t,(half.x-b.h.x-b.p.x)/v.x);
     if (v.x<0) t=std::min(t,(-half.x+b.h.x-b.p.x)/v.x);
@@ -153,7 +147,8 @@ void propagatePushes(const std::vector<Body>& bodies,Vec2 half,double cap,
         update();
         auto next=sources;
         auto transmit=[&](std::size_t from,std::size_t to) {
-            if(!closing(bodies[from],bodies[to],vel[from],vel[to])) return;
+            if(!closing(bodies[from],bodies[to],vel[from],vel[to]) ||
+               !closing(bodies[from],bodies[to],vel[from],{})) return;
             const auto g=gap(bodies[from],bodies[to]);
             for(std::size_t r=0;r<2;++r) {
                 const auto v=sourceVelocity(drive[r],sources[from][r]);
