@@ -91,6 +91,43 @@ std::size_t root(const std::vector<std::size_t>& parent,std::size_t i) {
 void unite(std::vector<std::size_t>& p,std::size_t a,std::size_t b) {
     a=root(p,a); b=root(p,b); if(a!=b) p[std::max(a,b)]=std::min(a,b);
 }
+// Restrict the closing relative normal speed symmetrically, without
+// adding velocity to either robot. Opposing inward components become zero;
+// for same-direction travel, only the faster follower is limited.
+// Tangential components and separating motion are left untouched.
+void constrainRobots(const Body& a,const Body& b,Vec2 av,Vec2 bv,
+                     Vec2& aLimit,Vec2& bLimit) {
+    const auto g=gap(a,b); const auto d=sub(b.p,a.p);
+    auto axis=[&](double gapAxis,double dir,double va,double vb,double& la,double& lb) {
+        if(gapAxis < -eps) return;
+        const double normal=sign(dir);
+        va*=normal; vb*=normal;
+        if(va<=vb) return;
+        const double nextA=std::min(va,std::max(0.0,vb))*normal;
+        const double nextB=std::max(vb,std::min(0.0,va))*normal;
+        if(std::abs(nextA)<std::abs(la)) la=nextA;
+        if(std::abs(nextB)<std::abs(lb)) lb=nextB;
+    };
+    axis(g.x,d.x,av.x,bv.x,aLimit.x,bLimit.x);
+    axis(g.y,d.y,av.y,bv.y,aLimit.y,bLimit.y);
+}
+// A robot/robot face contact can end while the robots slide past each
+// other. Recompute desired velocity at that instant instead of retaining
+// the blocked normal until the next tick. At a corner, closing() already
+// permits tangential/separating motion, so do not create a zero-time event.
+double robotContactRelease(const Body& a,const Body& b,Vec2 av,Vec2 bv,double limit) {
+    if(!touching(a,b)) return limit;
+    const auto g=gap(a,b);
+    const auto p=sub(b.p,a.p), v=sub(bv,av), h=add(a.h,b.h);
+    auto exit=[&](double pos,double speed,double extent) {
+        if(speed==0) return;
+        const double t=(sign(speed)*extent-pos)/speed;
+        if(t>0 && t<limit) limit=t;
+    };
+    if(g.x>=-eps && g.y < -eps && v.x==0) exit(p.y,v.y,h.y);
+    if(g.y>=-eps && g.x < -eps && v.y==0) exit(p.x,v.x,h.x);
+    return limit;
+}
 // Follow the box only as far as each inward relative velocity permits.
 // A blocked normal must not cancel the robot's independent tangential
 // motion. A box moving into a non-following robot still stops its group.
@@ -189,6 +226,8 @@ MovementResult resolveMovement(const ArenaConfig& config,
                     bool halt=false;
                     constrainRobotBox(bodies[i],bodies[j],vel[i],vel[j],limit[i],halt);
                     if(halt) stop[groups[j]]=true;
+                } else if(bodies[i].kind==BodyKind::Robot && bodies[j].kind==BodyKind::Robot) {
+                    constrainRobots(bodies[i],bodies[j],vel[i],vel[j],limit[i],limit[j]);
                 } else if(bodies[i].kind!=BodyKind::Fixed && bodies[j].kind!=BodyKind::Fixed) {
                     stop[groups[i]]=true;
                     stop[groups[j]]=true;
@@ -214,7 +253,7 @@ MovementResult resolveMovement(const ArenaConfig& config,
         }
         if(!resolved) { limited=true; break; }
         if(std::none_of(vel.begin(),vel.end(),moving)) { remaining=0; break; }
-        double t=remaining;
+        double t=robotContactRelease(bodies[0],bodies[1],vel[0],vel[1],remaining);
         for(std::size_t i=0;i<n;++i) {
             t=wallTime(bodies[i],vel[i],half,t);
             for(std::size_t j=i+1;j<n;++j)

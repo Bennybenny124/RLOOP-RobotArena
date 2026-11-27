@@ -6,6 +6,7 @@ inline constexpr double contactToleranceCm = 1e-7;
 
 // Square robot footprint, AABB boxes; robots and box groups slide along
 // arena walls and fixed obstacles without renormalizing velocity.
+// Robot pairs restrict relative inward components symmetrically.
 bool overlaps(Vec2 a, Vec2 ah, Vec2 b, Vec2 bh) noexcept;
 Vec2 clampPushVelocity(Vec2 sum, double cap) noexcept;
 struct MovementResult {

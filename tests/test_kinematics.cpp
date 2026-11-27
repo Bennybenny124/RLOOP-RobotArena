@@ -230,5 +230,91 @@ int main() {
     // Release the push: no inertia or extra movement.
     s=a.step({}).state;
     REQUIRE(near(s.obstacles[0].center.x,645) && near(s.obstacles[0].center.y,-545));
+    // Robot/robot face contact: diagonal movement preserves the tangent
+    // against a stationary opponent, with no passive pushing.
+    c=fixture(); c.map.robots[0].spawn={-10,0}; c.map.robots[1].spawn={0,0};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    auto pairStep=a.step({{{8},{0}}});
+    REQUIRE(near(pairStep.state.robots[0].position.x,-10));
+    REQUIRE(near(pairStep.state.robots[0].position.y,-component));
+    REQUIRE(near(pairStep.state.robots[1].position.x,0) && near(pairStep.state.robots[1].position.y,0));
+    for(const auto& e:pairStep.events) REQUIRE(e.kind!=EventKind::MovementLimited);
+    // After the contact ends within the next tick, the previously
+    // blocked X component resumes for the remaining time.
+    s=a.step({{{8},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,-10+(2*component-10)));
+    REQUIRE(near(s.robots[0].position.y,-2*component));
+    REQUIRE(!overlaps(s.robots[0].position,{5,5},s.robots[1].position,{5,5}));
+    // Opposing diagonals on the same face slide together without
+    // cancelling their independent tangential velocities.
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{8},{12}}}).state;
+    REQUIRE(near(s.robots[0].position.x,-10) && near(s.robots[0].position.y,-component));
+    REQUIRE(near(s.robots[1].position.x,0) && near(s.robots[1].position.y,-component));
+    // Opposite tangents release contact mid-tick; each robot then
+    // resumes its own normal component, with identical swapped results.
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    pairStep=a.step({{{8},{16}}});
+    REQUIRE(near(pairStep.state.robots[0].position.x,-10+component-5));
+    REQUIRE(near(pairStep.state.robots[1].position.x,-component+5));
+    REQUIRE(near(pairStep.state.robots[0].position.y,-component));
+    REQUIRE(near(pairStep.state.robots[1].position.y,component));
+    for(const auto& e:pairStep.events) REQUIRE(e.kind!=EventKind::MovementLimited);
+    auto pairSwap=c; std::swap(pairSwap.map.robots[0],pairSwap.map.robots[1]);
+    REQUIRE(a.reset(1,pairSwap)==ResetStatus::Ready);
+    r=a.step({{{16},{8}}}).state;
+    REQUIRE(near(r.robots[1].position.x,pairStep.state.robots[0].position.x));
+    REQUIRE(near(r.robots[1].position.y,pairStep.state.robots[0].position.y));
+    REQUIRE(near(r.robots[0].position.x,pairStep.state.robots[1].position.x));
+    REQUIRE(near(r.robots[0].position.y,pairStep.state.robots[1].position.y));
+    // Head-on cardinal collision stops both normal components; release
+    // and separation do not require either player to move first.
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{6},{14}}}).state;
+    REQUIRE(near(s.robots[0].position.x,-10) && near(s.robots[1].position.x,0));
+    s=a.step({{{14},{6}}}).state;
+    REQUIRE(near(s.robots[0].position.x,-20) && near(s.robots[1].position.x,10));
+    // Faster follower only matches the slower leader along the normal.
+    c.map.robots[1].type=RobotType::Scout;
+    c.robotTypes[1].halfExtent=5; c.robotTypes[1].moveSpeed=3;
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{6},{6}}}).state;
+    REQUIRE(near(s.robots[0].position.x,-7) && near(s.robots[1].position.x,3));
+    // A separating leader is never dragged or accelerated by the follower.
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{0},{6}}}).state;
+    REQUIRE(near(s.robots[0].position.x,-10) && near(s.robots[1].position.x,3));
+    // Same constraint for a horizontal face (Y is normal).
+    c=fixture(); c.map.robots[0].spawn={0,-10}; c.map.robots[1].spawn={0,0};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{4},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,component) && near(s.robots[0].position.y,-10));
+    REQUIRE(near(s.robots[1].position.x,0) && near(s.robots[1].position.y,0));
+    // Exact corner: both closing components stop, but grazing is allowed.
+    c.map.robots[0].spawn={-10,-10};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{4},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,-10) && near(s.robots[0].position.y,-10));
+    s=a.step({{{6},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,0) && near(s.robots[0].position.y,-10));
+    // Contact reached mid-tick: normal displacement stops at contact,
+    // while tangential displacement continues.
+    c=fixture(); c.map.robots[0].spawn={-13,0}; c.map.robots[1].spawn={0,0};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{8},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,-10) && near(s.robots[0].position.y,-component));
+    // High-speed opposing motion cannot tunnel through the other robot.
+    c.map.robots[0].spawn={-100,0}; c.map.robots[1].spawn={100,0};
+    c.robotTypes[0].moveSpeed=500;
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{6},{14}}}).state;
+    REQUIRE(near(s.robots[0].position.x,-5) && near(s.robots[1].position.x,5));
+    // Against an outer wall, the leader cannot be pushed through it,
+    // and the following robot can still slide along the contact.
+    c=fixture(); c.map.robots[0].spawn={635,0}; c.map.robots[1].spawn={645,0};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{8},{6}}}).state;
+    REQUIRE(near(s.robots[0].position.x,635) && near(s.robots[0].position.y,-component));
+    REQUIRE(near(s.robots[1].position.x,645) && near(s.robots[1].position.y,0));
     std::cout << "kinematics passed\n";
 }
