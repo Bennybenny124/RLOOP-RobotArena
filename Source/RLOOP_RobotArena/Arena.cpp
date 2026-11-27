@@ -182,12 +182,21 @@ void AArena::DrawDebugArena() const
         }
     }
 
+    constexpr double RobotHalfHeightCm = 25.0;
+    const FColor RangeColor(192,192,192);
     for (std::size_t Index = 0; Index < State.robots.size(); ++Index)
     {
         const auto& Robot = State.robots[Index];
         const FColor Color = Index == 0 ? FColor::Blue : FColor::Red;
-        const FVector Center(Robot.position.x, Robot.position.y, 25.0);
-        DrawDebugBox(World, Center, FVector(Robot.halfExtent, Robot.halfExtent, 25.0),
+        const FVector Center(Robot.position.x, Robot.position.y, RobotHalfHeightCm);
+        // Use the same captured role configuration as the Core hitscan.
+        // The wire cylinder is visual only; its radius is center-to-center range.
+        const double Range = MatchConfig.robotTypes[static_cast<std::size_t>(Robot.type)].attackRange;
+        const FVector ZOffset(0.0, 0.0, RobotHalfHeightCm);
+        DrawDebugCylinder(World, Center - ZOffset, Center + ZOffset,
+                          static_cast<float>(Range), 64, RangeColor,
+                          false, 0.0f, 0, 1.0f);
+        DrawDebugBox(World, Center, FVector(Robot.halfExtent, Robot.halfExtent, RobotHalfHeightCm),
                      Color, false, 0.0f, 0, 3.0f);
         const FVector BarStart = Center + FVector(-Robot.halfExtent, -Robot.halfExtent-10, 35);
         const FVector BarEnd = BarStart + FVector(2*Robot.halfExtent,0,0);
@@ -211,7 +220,7 @@ void AArena::DrawDebugArena() const
             const auto& Ray = LastRay[Index];
             const FColor RayColor = Ray.resultCode == rloop::AttackResult::Blocked ? FColor::Yellow:
                 Ray.resultCode == rloop::AttackResult::Reduced ? FColor::Red :
-                Ray.resultCode == rloop::AttackResult::OutOfRange ? FColor(192,192,192) : Color;
+                Ray.resultCode == rloop::AttackResult::OutOfRange ? RangeColor : Color;
             DrawDebugLine(World, FVector(Ray.from.x,Ray.from.y,60),
                 FVector(Ray.to.x,Ray.to.y,60), RayColor, false, 0.0f, 0, 5.0f);
         }
