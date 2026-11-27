@@ -74,6 +74,13 @@ void AArena::BeginPlay()
     Super::BeginPlay();
 
     MatchConfig = rloop::ArenaConfig{};
+    FString AbilityError;
+    const FRobotAbilitySet& Abilities = RobotAbilityAsset ? RobotAbilityAsset->Abilities : RobotAbilities;
+    if (!Abilities.ToCore(MatchConfig.robotTypes, AbilityError))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Robot abilities: %s"), *AbilityError);
+        return;
+    }
     MatchConfig.robots[0].type = static_cast<rloop::RobotType>(Player0Type);
     MatchConfig.robots[1].type = static_cast<rloop::RobotType>(Player1Type);
     for (const FArenaDebugObstacle& Obstacle : DebugObstacles)

@@ -5,13 +5,11 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "CoreArena.h"
+#include "RobotAbilityConfig.h"
 #include "Arena.generated.h"
 
 class UCameraComponent;
 class USceneComponent;
-
-UENUM(BlueprintType)
-enum class ERloopRobotType : uint8 { Tank, Scout, Ranged };
 
 USTRUCT(BlueprintType)
 struct FArenaDebugObstacle
@@ -73,6 +71,13 @@ private:
 
     UPROPERTY(VisibleAnywhere, Category = "Local PvP")
     TObjectPtr<UCameraComponent> DebugCamera;
+
+    // Optional shared role asset; inline values apply when no asset is assigned.
+    UPROPERTY(EditAnywhere, Category = "Robot Abilities")
+    TObjectPtr<URobotAbilityData> RobotAbilityAsset;
+
+    UPROPERTY(EditAnywhere, Category = "Robot Abilities")
+    FRobotAbilitySet RobotAbilities;
 
     rloop::ArenaConfig MatchConfig;
     rloop::CoreArena Simulation;
