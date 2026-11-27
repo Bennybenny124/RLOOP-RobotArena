@@ -14,22 +14,30 @@
 - **PvC**：玩家對 RL agent（開發初期先以 rule-based 教官代打，agent 訓練完成後替換）
 - **CvC**：RL agent 對 RL agent
 - 技術分層：
-  - `core`（C++，不依賴 UE5）：固定步長模擬、kinematic 碰撞與推箱、戰鬥規則、observation、教官、replay 序列化
+  - C++ Core（原始碼位於 `Source/RLOOP_RobotArena/Core*.h` / `Core*.cpp`，CMake target `rloop_core`，不依賴 UE5）：固定步長模擬、kinematic 碰撞與推箱、戰鬥規則、observation、教官、replay 序列化
   - `bindings`（pybind11）：把環境 expose 給 Python
-  - `training`（Python，全專案唯一使用 Python 的部分）：DQN、對手池、評測
-  - `ue5`：渲染、玩家輸入、PvC 模型推論、replay 播放，直接呼叫 `core`
+  - `RL/`（Python 訓練目錄，全專案唯一使用 Python 的部分）：DQN、對手池、評測
+  - UE5（`Source/RLOOP_RobotArena/Arena.*`、`Robot.*` 等接入層）：渲染、玩家輸入、PvC 模型推論、replay 播放，直接呼叫 `core`
 - 建議：`core` 可 headless 執行，訓練與 UE5 共用同一份規則與 observation 程式碼，避免兩套實作不一致
+
+### 1.1.1 Issue #3–#7 可玩垂直切片契約
+
+目前 headless Core 提供 `rloop::CoreArena::reset(seed, config)`、`step(ActionsV2)`、`state()`，由同一個 CoreArena 管理兩個 CoreRobot，以整數 tick 和固定 dt 推進。移除舊版向量式 Action 入口，離散動作為唯一公開 step 介面。離散控制器介面、`WorldStateV2`、`EventV2`、`StepResultV2` 及具體數值契約見 [Core simulation v2](core-simulation-v2.md)。
+
+Core 使用 cm、cm/s，XY 平面原點為 (0,0)，UE5 地板為 Z=0，場地界線為 ±width/2、±height/2。已提供三種角色配置、18 actions、swept AABB 碰撞與箱組推動、同步 hitscan 戰鬥、固定精度 HP／回血與勝負判定。AArena 驅動固定步長本地雙人對局、讀取 Core snapshots/events；ARobot 提供鍵盤控制器。暫定幾何與數值皆列於 v2 契約，並非正式角色平衡或新核准規格。跨模組 replay 序列化／驗證仍屬 #8。
 
 ### 1.2 競技場
 
 - 有界 2D 平面，邊界為牆
 - 固定掩體（不可移動）與可移動掩體（只能平移、不可旋轉）各數個
-- 場景由 config 描述（尺寸、掩體數量與位置、出生點），curriculum 只需調整 config
+- 場景由獨立 MapConfig 描述（尺寸、掩體數量與位置、雙方職業及出生點）；UE 使用 FArenaMapConfig / UArenaMapData，地圖各自為 Data Asset Instance，可重用同一套角色能力設定。curriculum 只需調整 config
 - 建議：訓練時雙方鏡像出生並加小幅隨機擾動；PvP 測試使用固定出生點
 
 ### 1.3 機器人
 
-**屬性（依類型寫死於 config）**
+**屬性（依類型定義於獨立 config，UE Editor 可調整）**
+
+純 C++ 預設值在 CoreRobotConfig.h；UE 的 FRobotAbilitySet / URobotAbilityData 提供三種角色 EditAnywhere 屬性。地圖只選擇角色，不複製能力數值。
 
 - 最大生命值
 - 單下攻擊傷害
@@ -68,7 +76,7 @@
 
 - 移動 9 種：不動 + 八方位（N、NE、E、SE、S、SW、W、NW）
 - 攻擊 2 種：否 / 是
-- 建議編碼：`action = move_id * 2 + attack`
+- 已採用建議編碼：`action = move_id * 2 + attack`；`ActionV2` 的 move_id 依序為不動、N、NE、E、SE、S、SW、W、NW（Core 的 N 為 +Y）
 - 移動與攻擊可同時進行，攻擊後無僵直
 - 斜向移動需正規化，確保各方向速度一致
 - 冷卻中或超距時仍可發出攻擊指令，只是無效（不做 action masking，由 agent 自己學）
@@ -93,15 +101,19 @@
 
 - 機器人接觸箱子**且朝箱子方向移動**時才觸發推動；只接觸不推不減速。
 - 推動中機器人移速乘 `push_speed_multiplier`（預設 `0.5`，configurable）；**不論同時推多少箱子，只減速一次**。
-- 箱子允許連鎖推動；相互接觸而共同推動的箱子形成暫時群組，每位有效推動者在群組內只計一次。
-- 同時推動時計算各推動者**減速後的推動速度向量**之和 `s = Σv_i`。箱子群組速度按**整體向量長度** clamp：若 `|s| > v_max`，則 `v_box = s × (v_max / |s|)`；否則 `v_box = s`。若 `s = 0` 則靜止。不得逐軸 clamp，亦不得因多個推動者提高 `v_max`。
+- 箱子允許連鎖推動，但接觸不代表綁定：只在相對接近的接觸法向傳遞推動分量；切向擦過及分離方向不傳遞推力。直接受推箱保留推動者向量；每個推動者的每個分量在同一箱子最多計一次，即使存在多條傳遞路徑。每次接觸事件重新計算，無永久群組。
+- 同時推動時計算各推動者**減速後的推動速度向量**之和 `s = Σv_i`。各箱子收到的有效速度向量按**整體向量長度** clamp：若 `|s| > v_max`，則 `v_box = s × (v_max / |s|)`；否則 `v_box = s`。若 `s = 0` 則靜止。不得逐軸 clamp，亦不得因多個推動者提高 `v_max`。
 - 已確認範例：`(3,4) + (4,3) = (7,7)`，當原本速度長度上限為 5，最終為 `(5/√2, 5/√2)`。
 - `v_max` 是原本的箱子速度長度限制，須由 config／明確契約定義；目前**不替角色與場景填入未確認的數值**。
 - 方向相反的推動向量按相加抵消；結果不得取決於玩家／箱子的遍歷順序。
-- 牆壁、固定掩體及箱子不可互相穿透；箱子群組撞到障礙時限制合法位移。角落、箱組碰撞與雙人對推列入 regression tests。
+- 牆壁、固定掩體及箱子不可互相穿透；箱子撞到障礙時限制合法位移，阻擋只透過壓縮接觸限制後方箱子。角落、箱組碰撞與雙人對推列入 regression tests。
 - 八方向斜向移動須正規化。固定模擬時間步長 `dt`，不使用加速度或動量來模擬推動。
 
-**仍待實作期確認**：箱組碰牆時是否允許沿牆滑動、機器人相互碰撞細節、幾何接觸容差，以及不同角色原始移速和 `v_max` 的對應；不得在實作中默默將候選設定當成既定需求。
+**已確認的滑動規則**：機器人及受推動的可移動箱組斜向貼著場地外牆或固定掩體時，只移除朝障礙物內部的速度分量，保留原有切向速度，不重新正規化；角落兩個方向皆受阻時停止。靜態碰撞限制各箱子的法向分量，再透過相對速度限制阻止其他箱子穿透；切向移動不會拖動鄰箱。機器人跟隨箱子時只限制會穿透箱子的分量。
+
+**機器人互撞滑動**：雙方以相同規則限制相對接近的法向速度，保留切向與分離方向。相向法向分量停止；同向時僅較快的後方機器人受到前方速度限制，不會被動推動另一方。離開接觸面時重新計算速度，不依玩家 ID 決定優先權。
+
+**暫定實作（待團隊驗證，不視為最終核准）**：機器人以正方形 AABB 表示，接觸容差 1e-7 cm，箱子速限獨立配置。詳細 swept contact 契約見 [Core simulation v2](core-simulation-v2.md)。
 
 ### 1.7 脫戰回血（已確認）
 
@@ -163,7 +175,7 @@
 
 - Replay 包含 schema/core 版本、config/其 hash、seed、每 tick action、事件及可驗證結果。相同 seed/config/actions 在文件指定平台與數值契約下應可逐 tick 重現。
 - 模型匯出 ONNX 與 UE5 C++ 推論（NNE 或 ONNX Runtime）是候選方案，應在早期進行技術可行性驗證。
-- Observation 由同一份 C++ Core 產生；`ActionV1`、`ObservationV1`、`ReplayV1` 和 model metadata 均須版本化，模型載入時檢查相容性。
+- Observation 由同一份 C++ Core 產生；`ActionV2`、`ObservationV1`、`ReplayV1` 和 model metadata 均須版本化，模型載入時檢查相容性。
 
 ## 2. 已確認的共識與尚未定案事項
 
@@ -178,7 +190,7 @@
 | G4-A | 可連鎖推；多個機器人速度向量相加，再對原速度長度上限 clamp |
 | 角色平衡 | 以跨地圖與交換出生側後的 matchup 勝率接近 50:50 為目標；個別地圖可不同 |
 
-**保留待定、暫不討論數值**：角色 HP／傷害／冷卻／射程／移速／回血，地圖大小與掩體佈局，回合時長，脫戰等待時間，箱子速度上限的具體值，碰撞邊界與沿牆滑動，Observation probe/速度特徵，reward 權重，模型推論方案。原 spec 標記「建議」的預設仍只是候選，不是已核准機制。
+**保留待定、暫不討論數值**：角色 HP／傷害／冷卻／射程／移速／回血，地圖大小與掩體佈局，回合時長，脫戰等待時間，箱子速度上限的具體值，其他碰撞邊界與動態物體接觸細節，Observation probe/速度特徵，reward 權重，模型推論方案。原 spec 標記「建議」的預設仍只是候選，不是已核准機制。
 
 ## 3. 里程碑與垂直切片 Roadmap
 

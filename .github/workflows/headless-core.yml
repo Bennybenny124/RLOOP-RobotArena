@@ -1,0 +1,27 @@
+name: Headless Core
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Configure
+        run: cmake -S . -B build-headless -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build-headless --config Release --parallel
+      - name: Test
+        run: ctest --test-dir build-headless -C Release --output-on-failure
