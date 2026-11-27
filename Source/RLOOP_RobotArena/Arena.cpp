@@ -49,12 +49,6 @@ AArena::AArena()
     SetRootComponent(DebugRoot);
     DebugCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("DebugCamera"));
     DebugCamera->SetupAttachment(DebugRoot);
-    DebugCamera->SetAbsolute(true, true, true);
-    DebugCamera->SetProjectionMode(ECameraProjectionMode::Orthographic);
-    DebugCamera->SetOrthoWidth(1800.0f);
-    DebugCamera->SetAutoActivate(true);
-
-
 }
 
 void AArena::BeginPlay()
@@ -79,9 +73,6 @@ void AArena::BeginPlay()
     RestartMatch();
     if (bUseDebugCamera && bConfigReady)
     {
-        DebugCamera->SetWorldLocationAndRotation(FVector(0,0,2000), FRotator(-90,-90,0));
-        // 1300 x 1100 cm fits a typical 16:9 viewport with status-label margin.
-        DebugCamera->SetOrthoWidth(static_cast<float>(FMath::Max(MatchConfig.map.width + 200.0, (MatchConfig.map.height + 250.0)*16.0/9.0)));
         if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
         {
             PC->SetViewTarget(this);
