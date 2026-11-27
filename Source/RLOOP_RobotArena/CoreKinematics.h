@@ -14,5 +14,5 @@ struct MovementResult {
 MovementResult resolveMovement(const ArenaConfig& config,
                                const std::array<RobotStateV2,2>& robots,
                                std::vector<ObstacleStateV1>& obstacles,
-                               const ActionsV1& actions);
+                               const DecodedActions& actions);
 }

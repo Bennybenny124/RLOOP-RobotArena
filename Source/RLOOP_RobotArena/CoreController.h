@@ -12,9 +12,9 @@ public:
 
 inline StepResultV2 stepControllers(CoreArena& arena,Controller& p0,Controller& p1) {
     const auto snapshot=arena.state();
-    if(snapshot.result!=MatchResult::Running) return arena.stepDiscrete({});
+    if(snapshot.result!=MatchResult::Running) return arena.step({});
     const ActionV2 a=p0.action(snapshot,0);
     const ActionV2 b=p1.action(snapshot,1);
-    return arena.stepDiscrete({a,b});
+    return arena.step({a,b});
 }
 }

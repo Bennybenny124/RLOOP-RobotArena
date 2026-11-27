@@ -73,11 +73,6 @@ std::string configError(const ArenaConfig& config) {
     return {};
 }
 
-bool validAction(const ActionV1& action) noexcept {
-    return finiteVec(action.movement) &&
-           std::hypot(action.movement.x, action.movement.y) <= 1.0 + 1e-15;
-}
-
 } // namespace
 
 ResetStatus CoreArena::reset(std::uint64_t seed, const ArenaConfig& config) {
@@ -112,20 +107,12 @@ bool CoreArena::isTerminal() const noexcept {
            result_ == MatchResult::Player1Win;
 }
 
-StepResultV2 CoreArena::stepDiscrete(const ActionsV2& actions) {
-    ActionsV1 decoded{};
-    if (result_ == MatchResult::NotStarted || isTerminal()) return step(decoded);
-    if (!decodeAction(actions[0], decoded[0]) || !decodeAction(actions[1], decoded[1]))
-        return {StepStatus::InvalidAction, state(), {}};
-    return step(decoded);
-}
-
-StepResultV2 CoreArena::step(const ActionsV1& actions) {
+StepResultV2 CoreArena::step(const ActionsV2& discrete) {
     if (result_ == MatchResult::NotStarted) return {StepStatus::NotInitialized, state(), {}};
     if (isTerminal()) return {StepStatus::Terminal, state(), {}};
-    if (!validAction(actions[0]) || !validAction(actions[1])) {
+    DecodedActions actions{};
+    if (!decodeAction(discrete[0], actions[0]) || !decodeAction(discrete[1], actions[1]))
         return {StepStatus::InvalidAction, state(), {}};
-    }
 
     const std::array<RobotStateV2,2> previous{robots_[0].state(),robots_[1].state()};
     const std::array<Vec2,2> before{previous[0].position,previous[1].position};

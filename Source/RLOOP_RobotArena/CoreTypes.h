@@ -60,13 +60,12 @@ struct ArenaConfig {
     std::uint32_t outOfCombatDelayMs = 3000; // provisional
 };
 
-// Legacy low-level vector intent (v1). Discrete v2 is the controller contract.
-struct ActionV1 {
-    static constexpr std::uint32_t schemaVersion = 1;
+// Internal movement intent produced by the discrete action decoder.
+struct DecodedAction {
     Vec2 movement;
     bool attack = false;
 };
-using ActionsV1 = std::array<ActionV1, 2>;
+using DecodedActions = std::array<DecodedAction, 2>;
 
 // Discrete movement IDs: stop,N,NE,E,SE,S,SW,W,NW; north = +Y.
 struct ActionV2 {
@@ -74,7 +73,7 @@ struct ActionV2 {
     int value = 0;
 };
 using ActionsV2 = std::array<ActionV2, 2>;
-bool decodeAction(ActionV2 action, ActionV1& decoded) noexcept;
+bool decodeAction(ActionV2 action, DecodedAction& decoded) noexcept;
 ActionV2 encodeAction(int x, int y, bool attack) noexcept;
 
 struct RobotStateV2 {

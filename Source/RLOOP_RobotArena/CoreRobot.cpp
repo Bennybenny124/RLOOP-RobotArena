@@ -53,7 +53,7 @@ Hp CoreRobot::applyCombat(Hp damage,bool fired,std::uint32_t hz,std::uint32_t de
 
 // Controller encoding lives in the shared Core, never in UE or Python.
 namespace rloop {
-bool decodeAction(ActionV2 action, ActionV1& decoded) noexcept {
+bool decodeAction(ActionV2 action, DecodedAction& decoded) noexcept {
     if (action.value < 0 || action.value >= 18) return false;
     constexpr double d = 0.7071067811865475244;
     constexpr Vec2 directions[] = {{0,0},{0,1},{d,d},{1,0},{d,-d},

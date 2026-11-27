@@ -39,13 +39,13 @@ int main() {
     ArenaConfig config;
     config.robots[1].type = RobotType::Tank;
     for (int i = 0; i < 18; ++i) {
-        ActionV1 decoded;
+        DecodedAction decoded;
         REQUIRE(decodeAction({i}, decoded));
         REQUIRE(decoded.attack == (i % 2 != 0));
         REQUIRE(std::abs(std::hypot(decoded.movement.x, decoded.movement.y) - (i < 2 ? 0 : 1)) < 1e-12);
         REQUIRE(encodeAction(static_cast<int>(std::round(decoded.movement.x)), static_cast<int>(std::round(decoded.movement.y)), decoded.attack).value == i);
     }
-    ActionV1 ignored;
+    DecodedAction ignored;
     REQUIRE(!decodeAction({18}, ignored) && !decodeAction({-1}, ignored));
     CoreArena a, b, swapped;
     REQUIRE(a.step({}).status == StepStatus::NotInitialized);
@@ -58,20 +58,19 @@ int main() {
     auto missing = config; missing.robotTypes[1] = {};
     REQUIRE(a.reset(0, missing) == ResetStatus::InvalidConfig);
     REQUIRE(a.lastError().find("maxHp") != std::string::npos);
-    REQUIRE(a.stepDiscrete({{{0},{18}}}).status == StepStatus::InvalidAction);
+    REQUIRE(a.step({{{0},{18}}}).status == StepStatus::InvalidAction);
     REQUIRE(initial.tick == 0 && initial.seed == 42 && initial.result == MatchResult::Running);
     REQUIRE(initial.width == 1300 && initial.height == 1100 && initial.maxTicks == 3600);
-    ActionsV1 invalid{};
-    invalid[1].movement.x = std::numeric_limits<double>::quiet_NaN();
+    ActionsV2 invalid{{{6},{-1}}};
     REQUIRE(a.step(invalid).status == StepStatus::InvalidAction && equal(a.state(), initial));
-    invalid[1].movement = {1, 1};
+    invalid[1] = {18};
     REQUIRE(a.step(invalid).status == StepStatus::InvalidAction && equal(a.state(), initial));
     auto bad = config; bad.tickRateHz = 0;
     REQUIRE(a.reset(99, bad) == ResetStatus::InvalidConfig && equal(a.state(), initial));
     for (std::uint64_t t = 0; t < config.maxTicks; ++t) {
-        ActionsV1 actions{};
-        if (t < 300) { actions[0].movement = {-1, 0}; actions[1].movement = {1, 0}; }
-        else if (t < 600) { actions[0].movement = {0, 1}; actions[1].movement = {0, -1}; }
+        ActionsV2 actions{};
+        if (t < 300) { actions = {{{14},{6}}}; }
+        else if (t < 600) { actions = {{{2},{10}}}; }
         auto reverse = actions; std::swap(reverse[0], reverse[1]);
         const auto x = a.step(actions), y = b.step(actions), z = swapped.step(reverse);
         REQUIRE(x.status == StepStatus::Advanced && y.status == x.status && z.status == x.status);

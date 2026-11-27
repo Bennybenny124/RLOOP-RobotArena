@@ -8,8 +8,7 @@ namespace rloop {
 class CoreArena {
 public:
     ResetStatus reset(std::uint64_t seed, const ArenaConfig& config);
-    StepResultV2 step(const ActionsV1& actions);
-    StepResultV2 stepDiscrete(const ActionsV2& actions);
+    StepResultV2 step(const ActionsV2& actions);
     WorldStateV2 state() const;
     const std::string& lastError() const noexcept { return lastError_; }
     bool isTerminal() const noexcept;

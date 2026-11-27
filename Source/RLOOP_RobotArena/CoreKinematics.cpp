@@ -90,7 +90,7 @@ Vec2 clampPushVelocity(Vec2 sum,double cap) noexcept {
 MovementResult resolveMovement(const ArenaConfig& config,
                                const std::array<RobotStateV2,2>& robots,
                                std::vector<ObstacleStateV1>& obstacles,
-                               const ActionsV1& actions) {
+                               const DecodedActions& actions) {
     std::vector<Body> bodies;
     std::array<Vec2,2> desired{};
     for(std::size_t i=0;i<2;++i) {
