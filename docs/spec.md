@@ -22,7 +22,7 @@
 
 ### 1.1.1 Issue #3–#7 可玩垂直切片契約
 
-目前 headless Core 提供 `rloop::CoreArena::reset(seed, config)`、`stepDiscrete(ActionsV2)`、`state()`，由同一個 CoreArena 管理兩個 CoreRobot，以整數 tick 和固定 dt 推進。低階向量入口 `step(ActionsV1)` 保留。離散控制器介面、`WorldStateV2`、`EventV2`、`StepResultV2` 及具體數值契約見 [Core simulation v2](core-simulation-v2.md)。
+目前 headless Core 提供 `rloop::CoreArena::reset(seed, config)`、`step(ActionsV2)`、`state()`，由同一個 CoreArena 管理兩個 CoreRobot，以整數 tick 和固定 dt 推進。移除舊版向量式 Action 入口，離散動作為唯一公開 step 介面。離散控制器介面、`WorldStateV2`、`EventV2`、`StepResultV2` 及具體數值契約見 [Core simulation v2](core-simulation-v2.md)。
 
 Core 使用 cm、cm/s，XY 平面原點為 (0,0)，UE5 地板為 Z=0，場地界線為 ±width/2、±height/2。已提供三種角色配置、18 actions、swept AABB 碰撞與箱組推動、同步 hitscan 戰鬥、固定精度 HP／回血與勝負判定。AArena 驅動固定步長本地雙人對局、讀取 Core snapshots/events；ARobot 提供鍵盤控制器。暫定幾何與數值皆列於 v2 契約，並非正式角色平衡或新核准規格。跨模組 replay 序列化／驗證仍屬 #8。
 
@@ -30,12 +30,14 @@ Core 使用 cm、cm/s，XY 平面原點為 (0,0)，UE5 地板為 Z=0，場地界
 
 - 有界 2D 平面，邊界為牆
 - 固定掩體（不可移動）與可移動掩體（只能平移、不可旋轉）各數個
-- 場景由 config 描述（尺寸、掩體數量與位置、出生點），curriculum 只需調整 config
+- 場景由獨立 MapConfig 描述（尺寸、掩體數量與位置、雙方職業及出生點）；UE 使用 FArenaMapConfig / UArenaMapData，地圖各自為 Data Asset Instance，可重用同一套角色能力設定。curriculum 只需調整 config
 - 建議：訓練時雙方鏡像出生並加小幅隨機擾動；PvP 測試使用固定出生點
 
 ### 1.3 機器人
 
-**屬性（依類型寫死於 config）**
+**屬性（依類型定義於獨立 config，UE Editor 可調整）**
+
+純 C++ 預設值在 CoreRobotConfig.h；UE 的 FRobotAbilitySet / URobotAbilityData 提供三種角色 EditAnywhere 屬性。地圖只選擇角色，不複製能力數值。
 
 - 最大生命值
 - 單下攻擊傷害
@@ -169,7 +171,7 @@ Core 使用 cm、cm/s，XY 平面原點為 (0,0)，UE5 地板為 Z=0，場地界
 
 - Replay 包含 schema/core 版本、config/其 hash、seed、每 tick action、事件及可驗證結果。相同 seed/config/actions 在文件指定平台與數值契約下應可逐 tick 重現。
 - 模型匯出 ONNX 與 UE5 C++ 推論（NNE 或 ONNX Runtime）是候選方案，應在早期進行技術可行性驗證。
-- Observation 由同一份 C++ Core 產生；`ActionV1`、`ObservationV1`、`ReplayV1` 和 model metadata 均須版本化，模型載入時檢查相容性。
+- Observation 由同一份 C++ Core 產生；`ActionV2`、`ObservationV1`、`ReplayV1` 和 model metadata 均須版本化，模型載入時檢查相容性。
 
 ## 2. 已確認的共識與尚未定案事項
 

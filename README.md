@@ -25,6 +25,10 @@ ctest --test-dir build-headless -C Release --output-on-failure
 
 CTest: world_simulation, kinematics, combat, controllers. CMake and UE5 compile the same Core sources in `Source/RLOOP_RobotArena/`.
 
+## Editor configuration (UE5.6)
+
+Under Arena Map, edit the inline Map Config or select an ArenaMapData asset (one instance per map). Under Robot Abilities, edit Tank/Scout/Ranged inline or select a shared RobotAbilityData asset. Assigned assets take precedence. Restart PIE to load edits. See the [configuration guide](docs/core-simulation-v2.md#editor-configuration-and-reusable-instances) for creating assets and migrating older actor overrides.
+
 ## Local PvP debug (UE5.6)
 
-Compile the project, place one Arena actor in a level, enable Local PvP, Use Debug Camera and Draw Debug Arena, start Play in Editor and focus the viewport. Player 0: WASD + Space; Player 1: arrows + Right Ctrl; R restarts. The top-down viewer displays robot HP/cooldowns, live obstacles, laser events and match result. See the [debug guide and manual checklist](docs/core-simulation-v2.md#ue5-local-debug-pvp). The viewer is temporary debug presentation, not production UE assets.
+Compile the project, place one Arena actor in a level, enable Local PvP, Use Debug Camera and Draw Debug Arena, start Play in Editor and focus the viewport. Player 0: WASD + Space; Player 1: IJKL + Right Ctrl; R restarts. The top-down viewer displays robot HP/cooldowns, live obstacles, laser events and match result. See the [debug guide and manual checklist](docs/core-simulation-v2.md#ue5-local-debug-pvp). The viewer is temporary debug presentation, not production UE assets.
