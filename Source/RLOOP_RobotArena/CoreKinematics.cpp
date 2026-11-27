@@ -43,6 +43,25 @@ bool wallClosing(const Body& b,Vec2 v,Vec2 half) {
     const auto projected=projectWallVelocity(b,v,half);
     return projected.x!=v.x || projected.y!=v.y;
 }
+// A static contact blocks inward boundary axes, never tangential ones.
+// For an exact corner with inward motion on both axes, block both
+// symmetrically; no arbitrary axis or obstacle-ID preference.
+Vec2 projectFixedVelocity(const Body& body,const std::vector<Body>& bodies,Vec2 v) {
+    Vec2 projected=v;
+    for(const auto& fixed:bodies) {
+        if(fixed.kind!=BodyKind::Fixed || !closing(body,fixed,v,{})) continue;
+        const auto g=gap(body,fixed);
+        if(g.x>=-eps) projected.x=0;
+        if(g.y>=-eps) projected.y=0;
+    }
+    return projected;
+}
+// Combine independent restrictions on the same original velocity without
+// changing its sign or allowing obstacle traversal order to affect results.
+Vec2 restrictVelocity(Vec2 a,Vec2 b) {
+    return {std::abs(a.x)<=std::abs(b.x)?a.x:b.x,
+            std::abs(a.y)<=std::abs(b.y)?a.y:b.y};
+}
 double wallTime(const Body& b,Vec2 v,Vec2 half,double t) {
     if (v.x>0) t=std::min(t,(half.x-b.h.x-b.p.x)/v.x);
     if (v.x<0) t=std::min(t,(-half.x+b.h.x-b.p.x)/v.x);
@@ -72,18 +91,23 @@ std::size_t root(const std::vector<std::size_t>& parent,std::size_t i) {
 void unite(std::vector<std::size_t>& p,std::size_t a,std::size_t b) {
     a=root(p,a); b=root(p,b); if(a!=b) p[std::max(a,b)]=std::min(a,b);
 }
-// Scale a robot's whole velocity to follow a slower box. If the box itself
-// approaches the robot, stop its group rather than displacing the robot.
+// Follow the box only as far as each inward relative velocity permits.
+// A blocked normal must not cancel the robot's independent tangential
+// motion. A box moving into a non-following robot still stops its group.
 void constrainRobotBox(const Body& robot,const Body& box,Vec2 rv,Vec2 bv,
-                       double& scale,bool& stopBox) {
+                       Vec2& limit,bool& stopBox) {
     const auto g=gap(robot,box); const auto d=sub(box.p,robot.p);
-    auto axis=[&](double gapAxis,double dir,double r,double b) {
+    auto axis=[&](double gapAxis,double dir,double r,double b,double& allowed) {
         if(gapAxis < -eps) return;
-        r*=sign(dir); b*=sign(dir);
+        const double normal=sign(dir);
+        r*=normal; b*=normal;
         if(b<0) stopBox=true;
-        else if(r>b && r>0) scale=std::min(scale,b/r);
+        else if(r>b && r>0) {
+            const double candidate=b*normal;
+            if(std::abs(candidate)<std::abs(allowed)) allowed=candidate;
+        }
     };
-    axis(g.x,d.x,rv.x,bv.x); axis(g.y,d.y,rv.y,bv.y);
+    axis(g.x,d.x,rv.x,bv.x,limit.x); axis(g.y,d.y,rv.y,bv.y,limit.y);
 }
 }
 bool overlaps(Vec2 a,Vec2 ah,Vec2 b,Vec2 bh) noexcept {
@@ -122,7 +146,7 @@ MovementResult resolveMovement(const ArenaConfig& config,
         // Keep the original diagonal component; do not renormalize.
         std::array<Vec2,2> intent{};
         for(std::size_t r=0;r<2;++r)
-            intent[r]=projectWallVelocity(bodies[r],desired[r],half);
+            intent[r]=projectFixedVelocity(bodies[r],bodies,projectWallVelocity(bodies[r],desired[r],half));
         std::vector<std::array<bool,2>> pushes(n);
         std::array<bool,2> pushing{};
         for(std::size_t i=2;i<n;++i) if(bodies[i].kind==BodyKind::Box)
@@ -136,32 +160,45 @@ MovementResult resolveMovement(const ArenaConfig& config,
             for(std::size_t r=0;r<2;++r) if(pushes[i][r]) groupVel[i]=add(groupVel[i],vel[r]);
             groupVel[i]=clampPushVelocity(groupVel[i],config.boxSpeedCap);
         }
-        for(std::size_t i=2;i<n;++i) if(bodies[i].kind==BodyKind::Box) vel[i]=groupVel[groups[i]];
-        // Robot wall-normal components were removed above. Remaining
-        // constraints only reduce speeds; box groups still stop at walls
-        // and fixed obstacles. No ID-based winner.
+        // A push group must translate as one rigid collection of AABBs.
+        // Project the summed, norm-clamped velocity against every member's
+        // static contacts. Union all blocked axes, not whole-velocity stops.
+        // Separate wall and fixed passes so every member sees the same
+        // wall-projected group velocity regardless of obstacle order.
+        auto wallProjected=groupVel;
+        for(std::size_t i=2;i<n;++i) if(bodies[i].kind==BodyKind::Box) {
+            const auto g=groups[i];
+            wallProjected[g]=restrictVelocity(wallProjected[g],projectWallVelocity(bodies[i],groupVel[g],half));
+        }
+        auto staticProjected=wallProjected;
+        for(std::size_t i=2;i<n;++i) if(bodies[i].kind==BodyKind::Box) {
+            const auto g=groups[i];
+            staticProjected[g]=restrictVelocity(staticProjected[g],projectFixedVelocity(bodies[i],bodies,wallProjected[g]));
+        }
+        for(std::size_t i=2;i<n;++i) if(bodies[i].kind==BodyKind::Box) vel[i]=staticProjected[groups[i]];
+        // Static constraints are solved before dynamic contacts so the
+        // robot can follow a box's projected tangential velocity. The
+        // remaining synchronous passes only reduce components.
         bool resolved=false;
         for(std::size_t pass=0;pass<4*n+8;++pass) {
             std::vector<bool> stop(n,false);
-            std::array<double,2> scale{1,1};
-            for(std::size_t i=0;i<n;++i)
-                if(wallClosing(bodies[i],vel[i],half)) stop[groups[i]]=true;
+            std::array<Vec2,2> limit{vel[0],vel[1]};
             for(std::size_t i=0;i<n;++i) for(std::size_t j=i+1;j<n;++j) {
                 if(groups[i]==groups[j] || !closing(bodies[i],bodies[j],vel[i],vel[j])) continue;
                 if(bodies[i].kind==BodyKind::Robot && bodies[j].kind==BodyKind::Box) {
                     bool halt=false;
-                    constrainRobotBox(bodies[i],bodies[j],vel[i],vel[j],scale[i],halt);
+                    constrainRobotBox(bodies[i],bodies[j],vel[i],vel[j],limit[i],halt);
                     if(halt) stop[groups[j]]=true;
-                } else {
-                    if(bodies[i].kind!=BodyKind::Fixed) stop[groups[i]]=true;
-                    if(bodies[j].kind!=BodyKind::Fixed) stop[groups[j]]=true;
+                } else if(bodies[i].kind!=BodyKind::Fixed && bodies[j].kind!=BodyKind::Fixed) {
+                    stop[groups[i]]=true;
+                    stop[groups[j]]=true;
                 }
             }
             bool changed=false;
             for(std::size_t i=0;i<n;++i) {
                 const Vec2 old=vel[i];
                 if(stop[groups[i]]) vel[i]={};
-                else if(i<2) vel[i]=mul(vel[i],scale[i]);
+                else if(i<2) vel[i]=limit[i];
                 changed=changed || old.x!=vel[i].x || old.y!=vel[i].y;
             }
             if(!changed) {

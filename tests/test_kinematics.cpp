@@ -141,5 +141,94 @@ int main() {
     s=a.step({{{8},{0}}}).state;
     REQUIRE(near(s.robots[0].position.x,645) && near(s.robots[0].position.y,-component/2));
     REQUIRE(near(s.obstacles[0].center.x,645) && near(s.obstacles[0].center.y,-10-component/2));
+    // Fixed obstacle face: both tangential directions, no renormalization.
+    const WallCase fixedCases[] = {
+        {{-10,0},8,{-10,-component}},
+        {{-10,0},4,{-10,component}},
+        {{10,0},12,{10,-component}},
+        {{10,0},16,{10,component}},
+        {{0,-10},4,{component,-10}},
+        {{0,-10},16,{-component,-10}},
+        {{0,10},8,{component,10}},
+        {{0,10},12,{-component,10}}
+    };
+    for(const auto& face:fixedCases) {
+        c=fixture(); c.map.robots[0].spawn=face.spawn;
+        c.map.obstacles={{1,ObstacleType::Fixed,{0,0},{5,5}}};
+        REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+        const auto step=a.step({{{face.action},{0}}});
+        REQUIRE(near(step.state.robots[0].position.x,face.expected.x));
+        REQUIRE(near(step.state.robots[0].position.y,face.expected.y));
+        REQUIRE(near(step.state.obstacles[0].center.x,0) && near(step.state.obstacles[0].center.y,0));
+        for(const auto& e:step.events) REQUIRE(e.kind!=EventKind::MovementLimited);
+    }
+    // Reach a fixed face midway through a tick, slide for the remainder.
+    c=fixture(); c.map.robots[0].spawn={-13,0};
+    c.map.obstacles={{1,ObstacleType::Fixed,{0,0},{5,50}}};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{8},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,-10) && near(s.robots[0].position.y,-component));
+    s=a.step({{{8},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,-10) && near(s.robots[0].position.y,-2*component));
+    s=a.step({{{14},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,-20));
+    // At a fixed corner, inward on both axes stops; grazing is legal.
+    c=fixture(); c.map.robots[0].spawn={-10,-10};
+    c.map.obstacles={{1,ObstacleType::Fixed,{0,0},{5,5}}};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{4},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,-10) && near(s.robots[0].position.y,-10));
+    s=a.step({{{6},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,0) && near(s.robots[0].position.y,-10));
+    // Push into a wall from the side: both robot and box retain the
+    // slowed tangent even though the box cannot move along the normal.
+    c=fixture(); c.map.robots[0].spawn={635,0};
+    c.map.obstacles={box(1,645)};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    for(int tick=1;tick<=3;++tick) {
+        const auto step=a.step({{{8},{0}}});
+        REQUIRE(near(step.state.robots[0].position.x,635));
+        REQUIRE(near(step.state.robots[0].position.y,-tick*component/2));
+        REQUIRE(near(step.state.obstacles[0].center.x,645));
+        REQUIRE(near(step.state.obstacles[0].center.y,-tick*component/2));
+        for(const auto& e:step.events) REQUIRE(e.kind!=EventKind::MovementLimited);
+    }
+    // A chain hits the wall mid-tick: only its shared X velocity stops.
+    c=fixture(); c.map.robots[0].spawn={622,0};
+    c.map.obstacles={box(1,632),box(2,642)};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{8},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,625) && near(s.robots[0].position.y,-component/2));
+    REQUIRE(near(s.obstacles[0].center.x,635) && near(s.obstacles[1].center.x,645));
+    REQUIRE(near(s.obstacles[0].center.y,-component/2) && near(s.obstacles[1].center.y,-component/2));
+    // Fixed cover constrains an entire chain exactly like the wall.
+    c=fixture(); c.map.robots[0].spawn={-30,0};
+    c.map.obstacles={box(1,-20),box(2,-10),{3,ObstacleType::Fixed,{0,0},{5,50}}};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    const auto chain=a.step({{{8},{0}}});
+    REQUIRE(near(chain.state.robots[0].position.x,-30));
+    REQUIRE(near(chain.state.robots[0].position.y,-component/2));
+    REQUIRE(near(chain.state.obstacles[0].center.x,-20) && near(chain.state.obstacles[1].center.x,-10));
+    REQUIRE(near(chain.state.obstacles[0].center.y,-component/2) && near(chain.state.obstacles[1].center.y,-component/2));
+    REQUIRE(near(chain.state.obstacles[2].center.x,0) && near(chain.state.obstacles[2].center.y,0));
+    for(const auto& e:chain.events) REQUIRE(e.kind!=EventKind::MovementLimited);
+    std::reverse(c.map.obstacles.begin(),c.map.obstacles.end());
+    std::swap(c.map.robots[0],c.map.robots[1]);
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    r=a.step({{{0},{8}}}).state;
+    REQUIRE(near(r.robots[1].position.x,chain.state.robots[0].position.x));
+    REQUIRE(near(r.robots[1].position.y,chain.state.robots[0].position.y));
+    REQUIRE(near(r.obstacles[2].center.y,chain.state.obstacles[0].center.y));
+    REQUIRE(near(r.obstacles[1].center.y,chain.state.obstacles[1].center.y));
+    // Group at a corner: the constraints on both axes apply to all boxes.
+    c=fixture(); c.map.robots[0].spawn={635,-545};
+    c.map.obstacles={box(1,645,-545)};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{8},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,635) && near(s.robots[0].position.y,-545));
+    REQUIRE(near(s.obstacles[0].center.x,645) && near(s.obstacles[0].center.y,-545));
+    // Release the push: no inertia or extra movement.
+    s=a.step({}).state;
+    REQUIRE(near(s.obstacles[0].center.x,645) && near(s.obstacles[0].center.y,-545));
     std::cout << "kinematics passed\n";
 }
