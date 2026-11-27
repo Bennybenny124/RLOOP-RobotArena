@@ -31,11 +31,17 @@ bool closing(const Body& a,const Body& b,Vec2 av,Vec2 bv) {
     return (g.x < -eps || v.x*sign(d.x)>0) &&
            (g.y < -eps || v.y*sign(d.y)>0);
 }
+// Remove only velocity components directed through an arena wall.
+Vec2 projectWallVelocity(const Body& b,Vec2 v,Vec2 half) {
+    if ((v.x>0 && b.p.x+b.h.x>=half.x-eps) ||
+        (v.x<0 && b.p.x-b.h.x<=-half.x+eps)) v.x=0;
+    if ((v.y>0 && b.p.y+b.h.y>=half.y-eps) ||
+        (v.y<0 && b.p.y-b.h.y<=-half.y+eps)) v.y=0;
+    return v;
+}
 bool wallClosing(const Body& b,Vec2 v,Vec2 half) {
-    return (v.x>0 && b.p.x+b.h.x>=half.x-eps) ||
-           (v.x<0 && b.p.x-b.h.x<=-half.x+eps) ||
-           (v.y>0 && b.p.y+b.h.y>=half.y-eps) ||
-           (v.y<0 && b.p.y-b.h.y<=-half.y+eps);
+    const auto projected=projectWallVelocity(b,v,half);
+    return projected.x!=v.x || projected.y!=v.y;
 }
 double wallTime(const Body& b,Vec2 v,Vec2 half,double t) {
     if (v.x>0) t=std::min(t,(half.x-b.h.x-b.p.x)/v.x);
@@ -112,22 +118,28 @@ MovementResult resolveMovement(const ArenaConfig& config,
             for(std::size_t j=i+1;j<n;++j)
                 if(bodies[j].kind==BodyKind::Box && touching(bodies[i],bodies[j])) unite(groups,i,j);
         for(std::size_t i=0;i<n;++i) groups[i]=root(groups,i);
+        // Reproject at every swept contact, including walls reached mid-tick.
+        // Keep the original diagonal component; do not renormalize.
+        std::array<Vec2,2> intent{};
+        for(std::size_t r=0;r<2;++r)
+            intent[r]=projectWallVelocity(bodies[r],desired[r],half);
         std::vector<std::array<bool,2>> pushes(n);
         std::array<bool,2> pushing{};
         for(std::size_t i=2;i<n;++i) if(bodies[i].kind==BodyKind::Box)
-            for(std::size_t r=0;r<2;++r) if(closing(bodies[r],bodies[i],desired[r],{})) {
+            for(std::size_t r=0;r<2;++r) if(closing(bodies[r],bodies[i],intent[r],{})) {
                 pushes[groups[i]][r]=true; pushing[r]=true;
             }
         std::vector<Vec2> vel(n), groupVel(n);
         for(std::size_t r=0;r<2;++r)
-            vel[r]=mul(desired[r],pushing[r]?config.pushSpeedMultiplier:1.0);
+            vel[r]=mul(intent[r],pushing[r]?config.pushSpeedMultiplier:1.0);
         for(std::size_t i=2;i<n;++i) if(groups[i]==i && bodies[i].kind==BodyKind::Box) {
             for(std::size_t r=0;r<2;++r) if(pushes[i][r]) groupVel[i]=add(groupVel[i],vel[r]);
             groupVel[i]=clampPushVelocity(groupVel[i],config.boxSpeedCap);
         }
         for(std::size_t i=2;i<n;++i) if(bodies[i].kind==BodyKind::Box) vel[i]=groupVel[groups[i]];
-        // Synchronous constraint passes; constraints only reduce speeds. Stop
-        // entire box groups at fixed obstacles/walls. No ID-based winner.
+        // Robot wall-normal components were removed above. Remaining
+        // constraints only reduce speeds; box groups still stop at walls
+        // and fixed obstacles. No ID-based winner.
         bool resolved=false;
         for(std::size_t pass=0;pass<4*n+8;++pass) {
             std::vector<bool> stop(n,false);

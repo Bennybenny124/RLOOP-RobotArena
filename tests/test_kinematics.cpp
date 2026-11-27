@@ -92,10 +92,54 @@ int main() {
     REQUIRE(a.reset(1,c)==ResetStatus::Ready);
     s=a.step({{{14},{0}}}).state;
     REQUIRE(near(s.robots[0].position.x,-20) && near(s.obstacles[0].center.x,0));
-    // Provisional no-sliding wall contract; footprint remains inside arena.
-    c=fixture(); c.map.robots[0].spawn={645,0};
+    // Wall sliding preserves the original diagonal component, not full speed.
+    const double component=10/std::sqrt(2.0);
+    struct WallCase { Vec2 spawn; int action; Vec2 expected; };
+    const WallCase wallCases[] = {
+        {{645,0},8,{645,-component}},    // right wall, W+D (+X,-Y)
+        {{645,0},4,{645,component}},     // right wall, S+D
+        {{-645,0},12,{-645,-component}}, // left wall, W+A
+        {{-645,0},16,{-645,component}},
+        {{0,-545},8,{component,-545}},
+        {{0,-545},12,{-component,-545}},
+        {{0,545},4,{component,545}},
+        {{0,545},16,{-component,545}}
+    };
+    for(const auto& wall:wallCases) {
+        c=fixture(); c.map.robots[0].spawn=wall.spawn;
+        REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+        const auto step=a.step({{{wall.action},{0}}});
+        REQUIRE(near(step.state.robots[0].position.x,wall.expected.x));
+        REQUIRE(near(step.state.robots[0].position.y,wall.expected.y));
+        for(const auto& e:step.events) REQUIRE(e.kind!=EventKind::MovementLimited);
+    }
+    // Contact reached partway through a tick: continue tangentially for
+    // the remaining time, including following ticks.
+    c=fixture(); c.map.robots[0].spawn={642,0};
     REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{8},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,645) && near(s.robots[0].position.y,-component));
+    s=a.step({{{8},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,645) && near(s.robots[0].position.y,-2*component));
+    // Cardinal movement into the wall stops; moving away is unrestricted.
+    s=a.step({{{6},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,645) && near(s.robots[0].position.y,-2*component));
+    s=a.step({{{14},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,635) && near(s.robots[0].position.y,-2*component));
+    // At a corner, both blocked components are removed; one free
+    // component can still move away from the corner.
+    c=fixture(); c.map.robots[0].spawn={645,-545};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{8},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,645) && near(s.robots[0].position.y,-545));
     s=a.step({{{4},{0}}}).state;
-    REQUIRE(near(s.robots[0].position.x,645) && near(s.robots[0].position.y,0));
+    REQUIRE(near(s.robots[0].position.x,645) && near(s.robots[0].position.y,-545+component));
+    // Wall-blocked robot intent cannot inject a normal push into a box.
+    c=fixture(); c.map.robots[0].spawn={645,0};
+    c.map.obstacles={box(1,645,-10)};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{8},{0}}}).state;
+    REQUIRE(near(s.robots[0].position.x,645) && near(s.robots[0].position.y,-component/2));
+    REQUIRE(near(s.obstacles[0].center.x,645) && near(s.obstacles[0].center.y,-10-component/2));
     std::cout << "kinematics passed\n";
 }
