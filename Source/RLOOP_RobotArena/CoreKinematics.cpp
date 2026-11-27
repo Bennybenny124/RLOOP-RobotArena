@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <numeric>
+#include <utility>
 
 namespace rloop {
 namespace {
@@ -84,18 +84,11 @@ double impact(const Body& a,const Body& b,Vec2 av,Vec2 bv,double limit) {
     if (!slab(p.x,v.x,h.x) || !slab(p.y,v.y,h.y)) return limit;
     return enter>=0 ? enter : limit;
 }
-std::size_t root(const std::vector<std::size_t>& parent,std::size_t i) {
-    while(parent[i]!=i) i=parent[i];
-    return i;
-}
-void unite(std::vector<std::size_t>& p,std::size_t a,std::size_t b) {
-    a=root(p,a); b=root(p,b); if(a!=b) p[std::max(a,b)]=std::min(a,b);
-}
 // Restrict the closing relative normal speed symmetrically, without
-// adding velocity to either robot. Opposing inward components become zero;
+// adding velocity to either body. Opposing inward components become zero;
 // for same-direction travel, only the faster follower is limited.
 // Tangential components and separating motion are left untouched.
-void constrainRobots(const Body& a,const Body& b,Vec2 av,Vec2 bv,
+void constrainRelativeNormal(const Body& a,const Body& b,Vec2 av,Vec2 bv,
                      Vec2& aLimit,Vec2& bLimit) {
     const auto g=gap(a,b); const auto d=sub(b.p,a.p);
     auto axis=[&](double gapAxis,double dir,double va,double vb,double& la,double& lb) {
@@ -111,11 +104,10 @@ void constrainRobots(const Body& a,const Body& b,Vec2 av,Vec2 bv,
     axis(g.x,d.x,av.x,bv.x,aLimit.x,bLimit.x);
     axis(g.y,d.y,av.y,bv.y,aLimit.y,bLimit.y);
 }
-// A robot/robot face contact can end while the robots slide past each
-// other. Recompute desired velocity at that instant instead of retaining
-// the blocked normal until the next tick. At a corner, closing() already
-// permits tangential/separating motion, so do not create a zero-time event.
-double robotContactRelease(const Body& a,const Body& b,Vec2 av,Vec2 bv,double limit) {
+// Face contacts can end while objects slide past one another. Recompute
+// push sources and constraints at that instant, not only at the next tick.
+// Do not create zero-time events at corners.
+double contactRelease(const Body& a,const Body& b,Vec2 av,Vec2 bv,double limit) {
     if(!touching(a,b)) return limit;
     const auto g=gap(a,b);
     const auto p=sub(b.p,a.p), v=sub(bv,av), h=add(a.h,b.h);
@@ -128,24 +120,60 @@ double robotContactRelease(const Body& a,const Body& b,Vec2 av,Vec2 bv,double li
     if(g.y>=-eps && g.x < -eps && v.y==0) exit(p.x,v.x,h.x);
     return limit;
 }
-// Follow the box only as far as each inward relative velocity permits.
-// A blocked normal must not cancel the robot's independent tangential
-// motion. A box moving into a non-following robot still stops its group.
-void constrainRobotBox(const Body& robot,const Body& box,Vec2 rv,Vec2 bv,
-                       Vec2& limit,bool& stopBox) {
-    const auto g=gap(robot,box); const auto d=sub(box.p,robot.p);
-    auto axis=[&](double gapAxis,double dir,double r,double b,double& allowed) {
-        if(gapAxis < -eps) return;
-        const double normal=sign(dir);
-        r*=normal; b*=normal;
-        if(b<0) stopBox=true;
-        else if(r>b && r>0) {
-            const double candidate=b*normal;
-            if(std::abs(candidate)<std::abs(allowed)) allowed=candidate;
-        }
-    };
-    axis(g.x,d.x,rv.x,bv.x,limit.x); axis(g.y,d.y,rv.y,bv.y,limit.y);
+// Each source is carried at most once per axis and box, even when
+// multiple contact paths reach the same box. Direct robot pushes retain
+// their full vector; box-to-box contacts transmit only inward normals.
+using PushSources = std::array<unsigned char,2>;
+constexpr unsigned char pushX=1, pushY=2;
+Vec2 sourceVelocity(Vec2 drive,unsigned char mask) {
+    return {(mask&pushX)?drive.x:0.0,(mask&pushY)?drive.y:0.0};
 }
+Vec2 boxVelocity(const PushSources& sources,const std::array<Vec2,2>& drive,
+                 double cap) {
+    return clampPushVelocity(add(sourceVelocity(drive[0],sources[0]),
+                                 sourceVelocity(drive[1],sources[1])),cap);
+}
+// Compute active compression paths synchronously. A separating or purely
+// tangential pair cannot start a path. Each propagation round adds only
+// source-axis bits, so termination is bounded by four bits per box.
+void propagatePushes(const std::vector<Body>& bodies,Vec2 half,double cap,
+                     const std::array<Vec2,2>& drive,
+                     std::vector<PushSources>& sources,std::vector<Vec2>& vel) {
+    std::vector<std::pair<std::size_t,std::size_t>> contacts;
+    for(std::size_t i=2;i<bodies.size();++i) if(bodies[i].kind==BodyKind::Box)
+        for(std::size_t j=i+1;j<bodies.size();++j)
+            if(bodies[j].kind==BodyKind::Box && touching(bodies[i],bodies[j]))
+                contacts.emplace_back(i,j);
+    auto update=[&]() {
+        for(std::size_t i=2;i<bodies.size();++i) if(bodies[i].kind==BodyKind::Box)
+            vel[i]=projectFixedVelocity(bodies[i],bodies,
+                projectWallVelocity(bodies[i],boxVelocity(sources[i],drive,cap),half));
+    };
+    for(std::size_t pass=0;pass<=4*bodies.size();++pass) {
+        update();
+        auto next=sources;
+        auto transmit=[&](std::size_t from,std::size_t to) {
+            if(!closing(bodies[from],bodies[to],vel[from],vel[to])) return;
+            const auto g=gap(bodies[from],bodies[to]);
+            for(std::size_t r=0;r<2;++r) {
+                const auto v=sourceVelocity(drive[r],sources[from][r]);
+                if(!closing(bodies[from],bodies[to],v,{})) continue;
+                unsigned char mask=0;
+                if(g.x>=-eps) mask|=pushX;
+                if(g.y>=-eps) mask|=pushY;
+                next[to][r]|=static_cast<unsigned char>(sources[from][r]&mask);
+            }
+        };
+        for(const auto& pair:contacts) {
+            transmit(pair.first,pair.second);
+            transmit(pair.second,pair.first);
+        }
+        if(next==sources) return;
+        sources=std::move(next);
+    }
+    update();
+}
+
 }
 bool overlaps(Vec2 a,Vec2 ah,Vec2 b,Vec2 bh) noexcept {
     return std::abs(a.x-b.x)<ah.x+bh.x-eps && std::abs(a.y-b.y)<ah.y+bh.y-eps;
@@ -173,72 +201,40 @@ MovementResult resolveMovement(const ArenaConfig& config,
     std::size_t iteration=0;
     bool limited=false;
     for(;remaining>0 && iteration<budget;++iteration) {
-        std::vector<std::size_t> groups(n);
-        std::iota(groups.begin(),groups.end(),std::size_t{0});
-        for(std::size_t i=2;i<n;++i) if(bodies[i].kind==BodyKind::Box)
-            for(std::size_t j=i+1;j<n;++j)
-                if(bodies[j].kind==BodyKind::Box && touching(bodies[i],bodies[j])) unite(groups,i,j);
-        for(std::size_t i=0;i<n;++i) groups[i]=root(groups,i);
-        // Reproject at every swept contact, including walls reached mid-tick.
-        // Keep the original diagonal component; do not renormalize.
-        std::array<Vec2,2> intent{};
+        // A contact is not a rigid joint. Rebuild the source graph at
+        // each impact/release and discard it when the interval ends.
+        std::array<Vec2,2> intent{},drive{};
         for(std::size_t r=0;r<2;++r)
             intent[r]=projectFixedVelocity(bodies[r],bodies,projectWallVelocity(bodies[r],desired[r],half));
-        std::vector<std::array<bool,2>> pushes(n);
+        std::vector<PushSources> sources(n);
         std::array<bool,2> pushing{};
         for(std::size_t i=2;i<n;++i) if(bodies[i].kind==BodyKind::Box)
             for(std::size_t r=0;r<2;++r) if(closing(bodies[r],bodies[i],intent[r],{})) {
-                pushes[groups[i]][r]=true; pushing[r]=true;
+                sources[i][r]=pushX|pushY;
+                pushing[r]=true;
             }
-        std::vector<Vec2> vel(n), groupVel(n);
+        std::vector<Vec2> vel(n);
         for(std::size_t r=0;r<2;++r)
-            vel[r]=mul(intent[r],pushing[r]?config.pushSpeedMultiplier:1.0);
-        for(std::size_t i=2;i<n;++i) if(groups[i]==i && bodies[i].kind==BodyKind::Box) {
-            for(std::size_t r=0;r<2;++r) if(pushes[i][r]) groupVel[i]=add(groupVel[i],vel[r]);
-            groupVel[i]=clampPushVelocity(groupVel[i],config.boxSpeedCap);
-        }
-        // A push group must translate as one rigid collection of AABBs.
-        // Project the summed, norm-clamped velocity against every member's
-        // static contacts. Union all blocked axes, not whole-velocity stops.
-        // Separate wall and fixed passes so every member sees the same
-        // wall-projected group velocity regardless of obstacle order.
-        auto wallProjected=groupVel;
-        for(std::size_t i=2;i<n;++i) if(bodies[i].kind==BodyKind::Box) {
-            const auto g=groups[i];
-            wallProjected[g]=restrictVelocity(wallProjected[g],projectWallVelocity(bodies[i],groupVel[g],half));
-        }
-        auto staticProjected=wallProjected;
-        for(std::size_t i=2;i<n;++i) if(bodies[i].kind==BodyKind::Box) {
-            const auto g=groups[i];
-            staticProjected[g]=restrictVelocity(staticProjected[g],projectFixedVelocity(bodies[i],bodies,wallProjected[g]));
-        }
-        for(std::size_t i=2;i<n;++i) if(bodies[i].kind==BodyKind::Box) vel[i]=staticProjected[groups[i]];
-        // Static constraints are solved before dynamic contacts so the
-        // robot can follow a box's projected tangential velocity. The
-        // remaining synchronous passes only reduce components.
+            vel[r]=drive[r]=mul(intent[r],pushing[r]?config.pushSpeedMultiplier:1.0);
+        propagatePushes(bodies,half,config.boxSpeedCap,drive,sources,vel);
+        // Solve remaining relative normal constraints simultaneously.
+        // Boxes can transmit compression but never tension or frictional
+        // drag. Constraints only reduce velocity, not add momentum.
         bool resolved=false;
         for(std::size_t pass=0;pass<4*n+8;++pass) {
-            std::vector<bool> stop(n,false);
-            std::array<Vec2,2> limit{vel[0],vel[1]};
+            auto limit=vel;
             for(std::size_t i=0;i<n;++i) for(std::size_t j=i+1;j<n;++j) {
-                if(groups[i]==groups[j] || !closing(bodies[i],bodies[j],vel[i],vel[j])) continue;
-                if(bodies[i].kind==BodyKind::Robot && bodies[j].kind==BodyKind::Box) {
-                    bool halt=false;
-                    constrainRobotBox(bodies[i],bodies[j],vel[i],vel[j],limit[i],halt);
-                    if(halt) stop[groups[j]]=true;
-                } else if(bodies[i].kind==BodyKind::Robot && bodies[j].kind==BodyKind::Robot) {
-                    constrainRobots(bodies[i],bodies[j],vel[i],vel[j],limit[i],limit[j]);
-                } else if(bodies[i].kind!=BodyKind::Fixed && bodies[j].kind!=BodyKind::Fixed) {
-                    stop[groups[i]]=true;
-                    stop[groups[j]]=true;
-                }
+                if(bodies[i].kind==BodyKind::Fixed || bodies[j].kind==BodyKind::Fixed ||
+                   !closing(bodies[i],bodies[j],vel[i],vel[j])) continue;
+                // Robots never receive passive motion from a box. The
+                // same component-wise relative limit prevents overlap
+                // for robot pairs, robot/box pairs and box pairs.
+                constrainRelativeNormal(bodies[i],bodies[j],vel[i],vel[j],limit[i],limit[j]);
             }
             bool changed=false;
             for(std::size_t i=0;i<n;++i) {
-                const Vec2 old=vel[i];
-                if(stop[groups[i]]) vel[i]={};
-                else if(i<2) vel[i]=limit[i];
-                changed=changed || old.x!=vel[i].x || old.y!=vel[i].y;
+                changed=changed || vel[i].x!=limit[i].x || vel[i].y!=limit[i].y;
+                vel[i]=limit[i];
             }
             if(!changed) {
                 resolved=true;
@@ -246,18 +242,20 @@ MovementResult resolveMovement(const ArenaConfig& config,
                 for(std::size_t i=0;i<n;++i) {
                     if(wallClosing(bodies[i],vel[i],half)) resolved=false;
                     for(std::size_t j=i+1;j<n;++j)
-                        if(groups[i]!=groups[j] && closing(bodies[i],bodies[j],vel[i],vel[j])) resolved=false;
+                        if(closing(bodies[i],bodies[j],vel[i],vel[j])) resolved=false;
                 }
                 break;
             }
         }
         if(!resolved) { limited=true; break; }
         if(std::none_of(vel.begin(),vel.end(),moving)) { remaining=0; break; }
-        double t=robotContactRelease(bodies[0],bodies[1],vel[0],vel[1],remaining);
+        double t=remaining;
         for(std::size_t i=0;i<n;++i) {
             t=wallTime(bodies[i],vel[i],half,t);
-            for(std::size_t j=i+1;j<n;++j)
-                if(groups[i]!=groups[j]) t=impact(bodies[i],bodies[j],vel[i],vel[j],t);
+            for(std::size_t j=i+1;j<n;++j) {
+                t=impact(bodies[i],bodies[j],vel[i],vel[j],t);
+                t=contactRelease(bodies[i],bodies[j],vel[i],vel[j],t);
+            }
         }
         if(!(t>0)) break;
         for(std::size_t i=0;i<n;++i) bodies[i].p=add(bodies[i].p,mul(vel[i],t));

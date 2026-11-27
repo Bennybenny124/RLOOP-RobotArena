@@ -193,15 +193,15 @@ int main() {
         REQUIRE(near(step.state.obstacles[0].center.y,-tick*component/2));
         for(const auto& e:step.events) REQUIRE(e.kind!=EventKind::MovementLimited);
     }
-    // A chain hits the wall mid-tick: only its shared X velocity stops.
+    // A chain hits the wall mid-tick: only compression along X is transmitted.
     c=fixture(); c.map.robots[0].spawn={622,0};
     c.map.obstacles={box(1,632),box(2,642)};
     REQUIRE(a.reset(1,c)==ResetStatus::Ready);
     s=a.step({{{8},{0}}}).state;
     REQUIRE(near(s.robots[0].position.x,625) && near(s.robots[0].position.y,-component/2));
     REQUIRE(near(s.obstacles[0].center.x,635) && near(s.obstacles[1].center.x,645));
-    REQUIRE(near(s.obstacles[0].center.y,-component/2) && near(s.obstacles[1].center.y,-component/2));
-    // Fixed cover constrains an entire chain exactly like the wall.
+    REQUIRE(near(s.obstacles[0].center.y,-component/2) && near(s.obstacles[1].center.y,0));
+    // Fixed cover blocks chain compression but does not drag a neighbor tangentially.
     c=fixture(); c.map.robots[0].spawn={-30,0};
     c.map.obstacles={box(1,-20),box(2,-10),{3,ObstacleType::Fixed,{0,0},{5,50}}};
     REQUIRE(a.reset(1,c)==ResetStatus::Ready);
@@ -209,7 +209,7 @@ int main() {
     REQUIRE(near(chain.state.robots[0].position.x,-30));
     REQUIRE(near(chain.state.robots[0].position.y,-component/2));
     REQUIRE(near(chain.state.obstacles[0].center.x,-20) && near(chain.state.obstacles[1].center.x,-10));
-    REQUIRE(near(chain.state.obstacles[0].center.y,-component/2) && near(chain.state.obstacles[1].center.y,-component/2));
+    REQUIRE(near(chain.state.obstacles[0].center.y,-component/2) && near(chain.state.obstacles[1].center.y,0));
     REQUIRE(near(chain.state.obstacles[2].center.x,0) && near(chain.state.obstacles[2].center.y,0));
     for(const auto& e:chain.events) REQUIRE(e.kind!=EventKind::MovementLimited);
     std::reverse(c.map.obstacles.begin(),c.map.obstacles.end());
@@ -316,5 +316,73 @@ int main() {
     s=a.step({{{8},{6}}}).state;
     REQUIRE(near(s.robots[0].position.x,635) && near(s.robots[0].position.y,-component));
     REQUIRE(near(s.robots[1].position.x,645) && near(s.robots[1].position.y,0));
+    // Regression: boxes first move together, then one is pushed along
+    // their shared face. The other box must stay where it was left.
+    c=fixture(); c.map.robots[1].spawn={15,-10};
+    c.map.obstacles={box(1,0),box(2,10)};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{6},{0}}}).state;
+    REQUIRE(near(s.obstacles[0].center.x,5) && near(s.obstacles[1].center.x,15));
+    for(int tick=1;tick<=3;++tick) {
+        const auto step=a.step({{{0},{2}}});
+        REQUIRE(near(step.state.obstacles[0].center.x,5) && near(step.state.obstacles[0].center.y,0));
+        REQUIRE(near(step.state.obstacles[1].center.x,15) && near(step.state.obstacles[1].center.y,5*tick));
+        for(const auto& e:step.events) REQUIRE(e.kind!=EventKind::MovementLimited);
+    }
+    // A side neighbor is not carried by a purely tangential push.
+    c=fixture(); c.map.obstacles={box(1,0),box(2,0,10)};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{6},{0}}}).state;
+    REQUIRE(near(s.obstacles[0].center.x,5) && near(s.obstacles[1].center.x,0));
+    REQUIRE(near(s.obstacles[1].center.y,10));
+    // Moving away from a touching box does not pull it.
+    c=fixture(); c.map.robots[0].spawn={10,-10};
+    c.map.obstacles={box(1,0),box(2,10)};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{2},{0}}}).state;
+    REQUIRE(near(s.obstacles[0].center.x,0) && near(s.obstacles[0].center.y,0));
+    REQUIRE(near(s.obstacles[1].center.x,10) && near(s.obstacles[1].center.y,5));
+    // Side contact transmits only the normal of the diagonal drive.
+    c=fixture(); c.map.obstacles={box(1,0),box(2,10)};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{4},{0}}}).state;
+    REQUIRE(near(s.obstacles[0].center.x,component/2) && near(s.obstacles[0].center.y,component/2));
+    REQUIRE(near(s.obstacles[1].center.x,component/2+10) && near(s.obstacles[1].center.y,0));
+    // A corner grazing along just one axis is not a compression path.
+    c=fixture(); c.map.obstacles={box(1,0),box(2,10,10)};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{6},{0}}}).state;
+    REQUIRE(near(s.obstacles[0].center.x,5) && near(s.obstacles[1].center.x,10) && near(s.obstacles[1].center.y,10));
+    // Opposite sources applied at the ends of a touching chain cancel.
+    c=fixture(); c.map.robots[1].spawn={30,0};
+    c.map.obstacles={box(1,0),box(2,10),box(3,20)};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{6},{14}}}).state;
+    for(std::size_t i=0;i<3;++i) REQUIRE(near(s.obstacles[i].center.x,10*i));
+    REQUIRE(near(s.robots[0].position.x,-10) && near(s.robots[1].position.x,30));
+    // A side neighbor can have its own independent push direction.
+    c=fixture(); c.map.robots[1].spawn={10,10};
+    c.map.obstacles={box(1,0),box(2,0,10)};
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{6},{14}}}).state;
+    REQUIRE(near(s.obstacles[0].center.x,5) && near(s.obstacles[1].center.x,-5));
+    // A faster leading box separates rather than being glued to the
+    // slower trailing box (both have direct sources).
+    c=fixture(); c.boxSpeedCap=10;
+    c.map.robots[0].spawn={-10,0}; c.map.robots[1].spawn={10,-10};
+    c.map.obstacles={box(1,0),box(2,10)};
+    c.map.robots[1].type=RobotType::Scout;
+    c.robotTypes[1].halfExtent=5; c.robotTypes[1].moveSpeed=20;
+    REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    s=a.step({{{6},{4}}}).state;
+    REQUIRE(near(s.obstacles[0].center.x,5));
+    REQUIRE(near(s.obstacles[1].center.x,10+2*component/2) && near(s.obstacles[1].center.y,component));
+    // Swapping players and box storage order yields the same positions.
+    auto separation=c; std::swap(separation.map.robots[0],separation.map.robots[1]);
+    std::reverse(separation.map.obstacles.begin(),separation.map.obstacles.end());
+    REQUIRE(a.reset(1,separation)==ResetStatus::Ready);
+    r=a.step({{{4},{6}}}).state;
+    REQUIRE(near(r.obstacles[1].center.x,s.obstacles[0].center.x) && near(r.obstacles[1].center.y,s.obstacles[0].center.y));
+    REQUIRE(near(r.obstacles[0].center.x,s.obstacles[1].center.x) && near(r.obstacles[0].center.y,s.obstacles[1].center.y));
     std::cout << "kinematics passed\n";
 }
