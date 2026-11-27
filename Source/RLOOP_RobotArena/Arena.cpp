@@ -151,17 +151,12 @@ void AArena::DrawDebugArena() const
 
     const double HalfWidth = State.width / 2.0;
     const double HalfHeight = State.height / 2.0;
-    const FVector Corners[] = {
-        FVector(-HalfWidth, -HalfHeight, 0.0),
-        FVector( HalfWidth, -HalfHeight, 0.0),
-        FVector( HalfWidth,  HalfHeight, 0.0),
-        FVector(-HalfWidth,  HalfHeight, 0.0)
-    };
-    for (int32 Index = 0; Index < 4; ++Index)
-    {
-        DrawDebugLine(World, Corners[Index], Corners[(Index + 1) % 4],
-                      FColor::White, false, 0.0f, 0, 3.0f);
-    }
+    // Visual-only arena boundary: floor Z=0, top Z=200 cm.
+    // DrawDebugBox takes half extents, so its center is at Z=100 cm.
+    constexpr double BoundaryHeightCm = 200.0;
+    DrawDebugBox(World, FVector(0.0, 0.0, BoundaryHeightCm / 2.0),
+                 FVector(HalfWidth, HalfHeight, BoundaryHeightCm / 2.0),
+                 FColor::White, false, 0.0f, 0, 3.0f);
     DrawDebugCoordinateSystem(World, FVector::ZeroVector, FRotator::ZeroRotator,
                               100.0f, false, 0.0f, 0, 2.0f);
     DrawDebugString(World, FVector(0.0, 0.0, 25.0), TEXT("Origin (0, 0, 0)"),
