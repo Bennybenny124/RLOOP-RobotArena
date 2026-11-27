@@ -14,7 +14,7 @@ struct Scripted : Controller {
 };
 int main() {
     CoreArena arena; ArenaConfig c;
-    c.robots[1].type=RobotType::Tank;
+    c.map.robots[1].type=RobotType::Tank;
     c.maxTicks=3;
     Scripted a,b;
     REQUIRE(stepControllers(arena,a,b).status==StepStatus::NotInitialized && a.calls==0);

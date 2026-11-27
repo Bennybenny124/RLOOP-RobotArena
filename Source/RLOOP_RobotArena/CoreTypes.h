@@ -27,16 +27,21 @@ struct RobotConfig {
     RobotType type = RobotType::Tank;
 };
 
-struct ArenaConfig {
-    // Provisional test fixture, not final gameplay balance.
+// Reusable layout value. Each CoreArena copies it at reset; live positions
+// never write back to the selected layout or other simulation instances.
+struct MapConfig {
     double width = 1300.0;
     double height = 1100.0;
-    std::uint32_t tickRateHz = 60;
-    std::uint64_t maxTicks = 3600;
-    std::array<RobotTypeConfig, 3> robotTypes = defaultRobotTypes();
     std::array<RobotConfig, 2> robots{{{{-390.0, 0.0}, RobotType::Tank},
                                       {{390.0, 0.0}, RobotType::Scout}}};
     std::vector<ObstacleStateV1> obstacles;
+};
+
+struct ArenaConfig {
+    MapConfig map;
+    std::uint32_t tickRateHz = 60;
+    std::uint64_t maxTicks = 3600;
+    std::array<RobotTypeConfig, 3> robotTypes = defaultRobotTypes();
     double pushSpeedMultiplier = 0.5;
     double boxSpeedCap = 150.0; // provisional cm/s, independent of robot type
     std::uint32_t outOfCombatDelayMs = 3000; // provisional

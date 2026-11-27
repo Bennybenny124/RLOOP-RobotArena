@@ -37,7 +37,7 @@ bool equal(const EventV2& a, const EventV2& b) {
 
 int main() {
     ArenaConfig config;
-    config.robots[1].type = RobotType::Tank;
+    config.map.robots[1].type = RobotType::Tank;
     for (int i = 0; i < 18; ++i) {
         DecodedAction decoded;
         REQUIRE(decodeAction({i}, decoded));
@@ -52,7 +52,7 @@ int main() {
     REQUIRE(a.reset(42, config) == ResetStatus::Ready);
     REQUIRE(b.reset(42, config) == ResetStatus::Ready);
     auto reverseConfig = config;
-    std::swap(reverseConfig.robots[0], reverseConfig.robots[1]);
+    std::swap(reverseConfig.map.robots[0], reverseConfig.map.robots[1]);
     REQUIRE(swapped.reset(42, reverseConfig) == ResetStatus::Ready);
     const auto initial = a.state();
     auto missing = config; missing.robotTypes[1] = {};
@@ -94,16 +94,34 @@ int main() {
     const auto terminal = a.state(); const auto after = a.step({});
     REQUIRE(after.status == StepStatus::Terminal && after.events.empty() && equal(after.state, terminal));
     REQUIRE(a.reset(42, config) == ResetStatus::Ready && equal(a.state(), initial));
-    config.obstacles = {{7, ObstacleType::Fixed, {0, 0}, {50, 60}},
+    config.map.obstacles = {{7, ObstacleType::Fixed, {0, 0}, {50, 60}},
                         {8, ObstacleType::Movable, {200, 100}, {30, 40}}};
     REQUIRE(a.reset(42, config) == ResetStatus::Ready);
     const auto layout = a.state();
     REQUIRE(layout.obstacles.size() == 2 && layout.obstacles[0].id == 7);
     REQUIRE(equal(a.step({}).state.obstacles[1].center, {200, 100}));
-    bad = config; bad.obstacles[1].id = 7;
+    bad = config; bad.map.obstacles[1].id = 7;
     REQUIRE(a.reset(0, bad) == ResetStatus::InvalidConfig);
-    bad = config; bad.obstacles[1].center = {650, 0};
+    bad = config; bad.map.obstacles[1].center = {650, 0};
     REQUIRE(a.reset(0, bad) == ResetStatus::InvalidConfig);
     REQUIRE(a.state().tick == 1);
+    // Layouts and role settings are copied per simulation instance.
+    ArenaConfig other;
+    other.map.width=900; other.map.height=800;
+    other.map.robots[0].spawn={-200,0}; other.map.robots[1].spawn={200,0};
+    other.map.robots[0].type=RobotType::Ranged;
+    other.map.obstacles={{9,ObstacleType::Movable,{0,0},{20,20}}};
+    other.robotTypes[2].maxHp=77*hpScale;
+    REQUIRE(b.reset(17,other)==ResetStatus::Ready);
+    const auto bStart=b.state();
+    REQUIRE(bStart.width==900 && bStart.height==800 && bStart.robots[0].hp==77*hpScale);
+    REQUIRE(bStart.robots[0].type==RobotType::Ranged && bStart.obstacles.size()==1);
+    other.map.obstacles.clear(); other.map.width=700; other.robotTypes[2].maxHp=50*hpScale;
+    REQUIRE(equal(b.state(),bStart));
+    REQUIRE(a.state().width==1300 && a.state().obstacles.size()==2);
+    b.step({{{6},{0}}});
+    REQUIRE(a.state().tick==1 && a.state().obstacles.size()==2);
+    REQUIRE(b.reset(17,other)==ResetStatus::Ready && b.state().width==700 && b.state().obstacles.empty());
+    REQUIRE(b.state().robots[0].hp==50*hpScale);
     std::cout << "World simulation: 3600-tick replay, symmetry, lifecycle and config checks passed\n";
 }

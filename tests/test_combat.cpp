@@ -7,7 +7,7 @@ using namespace rloop;
 #define REQUIRE(x) do { if(!(x)) { std::cerr << __LINE__ << ": " << #x << '\n'; std::exit(1); } } while(false)
 ArenaConfig fixture() {
     ArenaConfig c; c.tickRateHz=10; c.maxTicks=100; c.outOfCombatDelayMs=150;
-    c.robots={{{{-100,0},RobotType::Tank},{{100,0},RobotType::Scout}}};
+    c.map.robots={{{{-100,0},RobotType::Tank},{{100,0},RobotType::Scout}}};
     for(auto& t:c.robotTypes) t={100*hpScale,16*hpScale,500,250,100,10*hpScale,5};
     return c;
 }
@@ -17,14 +17,14 @@ const EventV2* attack(const StepResultV2& s,unsigned player) {
 }
 int main() {
     CoreArena a; auto c=fixture();
-    c.obstacles={{1,ObstacleType::Movable,{-30,0},{10,10}},
+    c.map.obstacles={{1,ObstacleType::Movable,{-30,0},{10,10}},
                  {2,ObstacleType::Movable,{30,0},{10,10}}};
     REQUIRE(a.reset(1,c)==ResetStatus::Ready);
     auto s=a.step({{{1},{0}}});
     REQUIRE(attack(s,0) && attack(s,0)->resultCode==AttackResult::Reduced);
     REQUIRE(attack(s,0)->actualDamage==hpScale && s.state.robots[1].hp==99*hpScale);
     REQUIRE(s.state.robots[0].cooldownTicks==5 && s.state.robots[1].quietTicks==0);
-    c.obstacles.push_back({3,ObstacleType::Fixed,{60,0},{5,10}});
+    c.map.obstacles.push_back({3,ObstacleType::Fixed,{60,0},{5,10}});
     REQUIRE(a.reset(1,c)==ResetStatus::Ready);
     s=a.step({{{1},{0}}});
     REQUIRE(attack(s,0)->resultCode==AttackResult::Blocked && attack(s,0)->to.x==55);
@@ -58,10 +58,10 @@ int main() {
     --ratios[1].hp; REQUIRE(resolveMatch(ratios,true)==MatchResult::Player0Win);
     // Edge touching cover counts; moving into range is resolved before shooting.
     c=fixture(); c.robotTypes[0].attackRange=190;
-    c.obstacles={{1,ObstacleType::Fixed,{0,10},{5,10}}};
+    c.map.obstacles={{1,ObstacleType::Fixed,{0,10},{5,10}}};
     REQUIRE(a.reset(1,c)==ResetStatus::Ready);
     s=a.step({{{7},{0}}}); REQUIRE(attack(s,0)->resultCode==AttackResult::Blocked);
-    c.obstacles.clear(); REQUIRE(a.reset(1,c)==ResetStatus::Ready);
+    c.map.obstacles.clear(); REQUIRE(a.reset(1,c)==ResetStatus::Ready);
     s=a.step({{{7},{0}}}); REQUIRE(attack(s,0)->resultCode==AttackResult::Hit);
     // Identical healing over one second across tick rates, with an exact
     // fractional-unit accumulator (and no tolerance-based HP comparison).

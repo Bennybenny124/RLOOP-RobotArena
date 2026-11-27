@@ -18,8 +18,8 @@ bool withinArena(Vec2 p, double halfWidth, double halfHeight) noexcept {
 }
 
 std::string configError(const ArenaConfig& config) {
-    if (!std::isfinite(config.width) || config.width <= 0.0 ||
-        !std::isfinite(config.height) || config.height <= 0.0 ||
+    if (!std::isfinite(config.map.width) || config.map.width <= 0.0 ||
+        !std::isfinite(config.map.height) || config.map.height <= 0.0 ||
         config.tickRateHz == 0 || config.tickRateHz > 1000 || config.maxTicks == 0) {
         return "arena dimensions/tickRateHz/maxTicks invalid";
     }
@@ -34,20 +34,20 @@ std::string configError(const ArenaConfig& config) {
         if (t.regenPerSecond < 0 || t.regenPerSecond > maxHpUnits) return prefix + "regenPerSecond invalid or missing";
         if (!std::isfinite(t.halfExtent) || t.halfExtent <= 0) return prefix + "halfExtent invalid or missing";
     }
-    if (config.width > 1e7 || config.height > 1e7 || config.obstacles.size() > 256 ||
+    if (config.map.width > 1e7 || config.map.height > 1e7 || config.map.obstacles.size() > 256 ||
         !std::isfinite(config.pushSpeedMultiplier) || config.pushSpeedMultiplier <= 0 || config.pushSpeedMultiplier > 1 ||
         !std::isfinite(config.boxSpeedCap) || config.boxSpeedCap <= 0 || config.boxSpeedCap > 1e7)
         return "arena/pushSpeedMultiplier/boxSpeedCap/obstacle count invalid";
-    const double hw = config.width / 2.0;
-    const double hh = config.height / 2.0;
-    for (const auto& robot : config.robots) {
+    const double hw = config.map.width / 2.0;
+    const double hh = config.map.height / 2.0;
+    for (const auto& robot : config.map.robots) {
         const auto index = static_cast<std::size_t>(robot.type);
         if (index >= config.robotTypes.size()) return "robot type invalid";
         const double h = config.robotTypes[index].halfExtent;
         if (h > hw || h > hh || !withinArena(robot.spawn, hw-h, hh-h)) return "robot spawn footprint outside arena";
     }
-    for (std::size_t i = 0; i < config.obstacles.size(); ++i) {
-        const auto& o = config.obstacles[i];
+    for (std::size_t i = 0; i < config.map.obstacles.size(); ++i) {
+        const auto& o = config.map.obstacles[i];
         if ((o.type != ObstacleType::Fixed && o.type != ObstacleType::Movable) ||
             !finiteVec(o.halfExtent) || o.halfExtent.x <= 0.0 || o.halfExtent.y <= 0.0 ||
             !withinArena(o.center, hw, hh) ||
@@ -56,18 +56,18 @@ std::string configError(const ArenaConfig& config) {
             return "obstacle bounds/type invalid";
         }
         for (std::size_t j = 0; j < i; ++j) {
-            if (config.obstacles[j].id == o.id) return "duplicate obstacle ID";
-            if (overlaps(o.center,o.halfExtent,config.obstacles[j].center,config.obstacles[j].halfExtent))
+            if (config.map.obstacles[j].id == o.id) return "duplicate obstacle ID";
+            if (overlaps(o.center,o.halfExtent,config.map.obstacles[j].center,config.map.obstacles[j].halfExtent))
                 return "overlapping obstacles";
         }
     }
-    const auto& a=config.robots[0]; const auto& b=config.robots[1];
+    const auto& a=config.map.robots[0]; const auto& b=config.map.robots[1];
     const double ah=config.robotTypes[static_cast<std::size_t>(a.type)].halfExtent;
     const double bh=config.robotTypes[static_cast<std::size_t>(b.type)].halfExtent;
     if (overlaps(a.spawn,{ah,ah},b.spawn,{bh,bh})) return "overlapping robot spawns";
-    for (const auto& robot:config.robots) {
+    for (const auto& robot:config.map.robots) {
         const double h=config.robotTypes[static_cast<std::size_t>(robot.type)].halfExtent;
-        for (const auto& o:config.obstacles)
+        for (const auto& o:config.map.obstacles)
             if (overlaps(robot.spawn,{h,h},o.center,o.halfExtent)) return "robot spawn overlaps obstacle";
     }
     return {};
@@ -79,11 +79,11 @@ ResetStatus CoreArena::reset(std::uint64_t seed, const ArenaConfig& config) {
     lastError_ = configError(config);
     if (!lastError_.empty()) return ResetStatus::InvalidConfig;
     config_ = config;
-    obstacles_ = config.obstacles;
+    obstacles_ = config.map.obstacles;
     seed_ = seed; // Reserved for future seeded layout generation; no random draws in v1.
     tick_ = 0;
     result_ = MatchResult::Running;
-    for (std::size_t i = 0; i < robots_.size(); ++i) robots_[i].reset(config_.robots[i], config_.robotTypes[static_cast<std::size_t>(config_.robots[i].type)]);
+    for (std::size_t i = 0; i < robots_.size(); ++i) robots_[i].reset(config_.map.robots[i], config_.robotTypes[static_cast<std::size_t>(config_.map.robots[i].type)]);
     return ResetStatus::Ready;
 }
 
@@ -94,8 +94,8 @@ WorldStateV2 CoreArena::state() const {
     snapshot.tick = tick_;
     snapshot.tickRateHz = config_.tickRateHz;
     snapshot.maxTicks = config_.maxTicks;
-    snapshot.width = config_.width;
-    snapshot.height = config_.height;
+    snapshot.width = config_.map.width;
+    snapshot.height = config_.map.height;
     snapshot.obstacles = obstacles_;
     snapshot.result = result_;
     for (std::size_t i = 0; i < robots_.size(); ++i) snapshot.robots[i] = robots_[i].state();

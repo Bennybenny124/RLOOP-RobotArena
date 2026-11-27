@@ -54,19 +54,7 @@ AArena::AArena()
     DebugCamera->SetOrthoWidth(1800.0f);
     DebugCamera->SetAutoActivate(true);
 
-    // Provisional fixtures for verifying debug shapes, not a gameplay map.
-    FArenaDebugObstacle Fixed;
-    Fixed.Id = 1;
-    Fixed.Center = FVector2D(-150.0, 180.0);
-    Fixed.HalfExtent = FVector2D(80.0, 50.0);
-    DebugObstacles.Add(Fixed);
 
-    FArenaDebugObstacle Movable;
-    Movable.Id = 2;
-    Movable.bMovable = true;
-    Movable.Center = FVector2D(150.0, -180.0);
-    Movable.HalfExtent = FVector2D(60.0, 60.0);
-    DebugObstacles.Add(Movable);
 }
 
 void AArena::BeginPlay()
@@ -81,28 +69,19 @@ void AArena::BeginPlay()
         UE_LOG(LogTemp, Error, TEXT("Robot abilities: %s"), *AbilityError);
         return;
     }
-    MatchConfig.robots[0].type = static_cast<rloop::RobotType>(Player0Type);
-    MatchConfig.robots[1].type = static_cast<rloop::RobotType>(Player1Type);
-    for (const FArenaDebugObstacle& Obstacle : DebugObstacles)
+    FString MapError;
+    const FArenaMapConfig& Layout = MapAsset ? MapAsset->Config : MapConfig;
+    if (!Layout.ToCore(MatchConfig.map, MapError))
     {
-        if (Obstacle.Id < 0)
-        {
-            UE_LOG(LogTemp, Error, TEXT("Arena debug obstacle IDs must be non-negative."));
-            return;
-        }
-        MatchConfig.obstacles.push_back({
-            static_cast<std::uint32_t>(Obstacle.Id),
-            Obstacle.bMovable ? rloop::ObstacleType::Movable : rloop::ObstacleType::Fixed,
-            {Obstacle.Center.X, Obstacle.Center.Y},
-            {Obstacle.HalfExtent.X, Obstacle.HalfExtent.Y}
-        });
+        UE_LOG(LogTemp, Error, TEXT("Arena map: %s"), *MapError);
+        return;
     }
     RestartMatch();
     if (bUseDebugCamera && bConfigReady)
     {
         DebugCamera->SetWorldLocationAndRotation(FVector(0,0,2000), FRotator(-90,-90,0));
         // 1300 x 1100 cm fits a typical 16:9 viewport with status-label margin.
-        DebugCamera->SetOrthoWidth(static_cast<float>(FMath::Max(MatchConfig.width + 200.0, (MatchConfig.height + 250.0)*16.0/9.0)));
+        DebugCamera->SetOrthoWidth(static_cast<float>(FMath::Max(MatchConfig.map.width + 200.0, (MatchConfig.map.height + 250.0)*16.0/9.0)));
         if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
         {
             PC->SetViewTarget(this);
@@ -256,5 +235,5 @@ void AArena::DrawDebugArena() const
             static_cast<double>(State.maxTicks-State.tick)/State.tickRateHz),
         nullptr, FColor::White, 0.0f);
     DrawDebugString(World, FVector(-HalfWidth,HalfHeight+45,80),
-        TEXT("P0 WASD + Space | P1 Arrows + Right Ctrl"), nullptr, FColor::White, 0.0f);
+        TEXT("P0 WASD + Space | P1 IJKL + Right Ctrl"), nullptr, FColor::White, 0.0f);
 }

@@ -100,7 +100,7 @@ MovementResult resolveMovement(const ArenaConfig& config,
     for(const auto& o:obstacles) bodies.push_back({o.center,o.halfExtent,
         o.type==ObstacleType::Fixed ? BodyKind::Fixed : BodyKind::Box});
     const std::size_t n=bodies.size();
-    const Vec2 half{config.width/2,config.height/2};
+    const Vec2 half{config.map.width/2,config.map.height/2};
     double remaining=1.0/static_cast<double>(config.tickRateHz);
     const std::size_t budget=16+8*n;
     std::size_t iteration=0;
