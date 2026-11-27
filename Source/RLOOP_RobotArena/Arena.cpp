@@ -183,24 +183,18 @@ void AArena::DrawDebugArena() const
     for (int32 Index = 0; Index < 4; ++Index)
     {
         DrawDebugLine(World, Corners[Index], Corners[(Index + 1) % 4],
-                      FColor::Yellow, false, 0.0f, 0, 3.0f);
+                      FColor::White, false, 0.0f, 0, 3.0f);
     }
     DrawDebugCoordinateSystem(World, FVector::ZeroVector, FRotator::ZeroRotator,
                               100.0f, false, 0.0f, 0, 2.0f);
     DrawDebugString(World, FVector(0.0, 0.0, 25.0), TEXT("Origin (0, 0, 0)"),
                     nullptr, FColor::White, 0.0f);
-    DrawDebugString(World, FVector(-HalfWidth, -HalfHeight, 25.0),
-                    FString::Printf(TEXT("Arena min (%.1f, %.1f) cm"), -HalfWidth, -HalfHeight),
-                    nullptr, FColor::Yellow, 0.0f);
-    DrawDebugString(World, FVector(HalfWidth, HalfHeight, 25.0),
-                    FString::Printf(TEXT("Arena max (%.1f, %.1f) cm"), HalfWidth, HalfHeight),
-                    nullptr, FColor::Yellow, 0.0f);
 
     const double Height = FMath::Max(1.0, DebugShapeHeightCm);
     for (const auto& Obstacle : State.obstacles)
     {
         const bool bMovable = Obstacle.type == rloop::ObstacleType::Movable;
-        const FColor Color = bMovable ? FColor::Blue : FColor::Red;
+        const FColor Color = bMovable ? FColor::Orange : FColor::White;
         const FVector Center(Obstacle.center.x, Obstacle.center.y, Height / 2.0);
         const FVector Extent(Obstacle.halfExtent.x, Obstacle.halfExtent.y, Height / 2.0);
         DrawDebugBox(World, Center, Extent, Color, false, 0.0f, 0, 3.0f);
@@ -214,17 +208,12 @@ void AArena::DrawDebugArena() const
             DrawDebugLine(World, Footprint[Index], Footprint[(Index + 1) % 4],
                           Color, false, 0.0f, 0, 3.0f);
         }
-        DrawDebugString(World, FVector(Center.X, Center.Y, Height + 20.0),
-                        FString::Printf(TEXT("%s #%u | X [%.1f, %.1f] Y [%.1f, %.1f] cm"),
-                            bMovable ? TEXT("Movable") : TEXT("Fixed"),
-                            static_cast<unsigned int>(Obstacle.id), Min.X, Max.X, Min.Y, Max.Y),
-                        nullptr, FColor::White, 0.0f);
     }
 
     for (std::size_t Index = 0; Index < State.robots.size(); ++Index)
     {
         const auto& Robot = State.robots[Index];
-        const FColor Color = Index == 0 ? FColor::Green : FColor(180, 80, 230);
+        const FColor Color = Index == 0 ? FColor::Blue : FColor::Red;
         const FVector Center(Robot.position.x, Robot.position.y, 25.0);
         DrawDebugBox(World, Center, FVector(Robot.halfExtent, Robot.halfExtent, 25.0),
                      Color, false, 0.0f, 0, 3.0f);
@@ -248,8 +237,8 @@ void AArena::DrawDebugArena() const
         if (RaySeconds[Index] > 0)
         {
             const auto& Ray = LastRay[Index];
-            const FColor RayColor = Ray.resultCode == rloop::AttackResult::Blocked ? FColor::Red :
-                Ray.resultCode == rloop::AttackResult::Reduced ? FColor::Yellow :
+            const FColor RayColor = Ray.resultCode == rloop::AttackResult::Blocked ? FColor::Yellow:
+                Ray.resultCode == rloop::AttackResult::Reduced ? FColor::Red :
                 Ray.resultCode == rloop::AttackResult::OutOfRange ? FColor(192,192,192) : Color;
             DrawDebugLine(World, FVector(Ray.from.x,Ray.from.y,60),
                 FVector(Ray.to.x,Ray.to.y,60), RayColor, false, 0.0f, 0, 5.0f);

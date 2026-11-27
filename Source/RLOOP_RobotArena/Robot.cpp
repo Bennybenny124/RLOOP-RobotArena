@@ -43,10 +43,10 @@ rloop::ActionV2 ARobot::ReadLocalAction(const APlayerController& Controller, std
     // The debug camera looks down with screen-right +X and screen-up -Y.
     // Opposite keys cancel. Holding fire repeatedly requests attack (no masking).
     const bool bFirst = Player == 0;
-    const int X = int(Controller.IsInputKeyDown(bFirst ? EKeys::D : EKeys::Right))
-                - int(Controller.IsInputKeyDown(bFirst ? EKeys::A : EKeys::Left));
-    const int Y = int(Controller.IsInputKeyDown(bFirst ? EKeys::S : EKeys::Down))
-                - int(Controller.IsInputKeyDown(bFirst ? EKeys::W : EKeys::Up));
+    const int X = int(Controller.IsInputKeyDown(bFirst ? EKeys::D : EKeys::L))
+                - int(Controller.IsInputKeyDown(bFirst ? EKeys::A : EKeys::J));
+    const int Y = int(Controller.IsInputKeyDown(bFirst ? EKeys::S : EKeys::K))
+                - int(Controller.IsInputKeyDown(bFirst ? EKeys::W : EKeys::I));
     const bool bAttack = Controller.IsInputKeyDown(bFirst ? EKeys::SpaceBar : EKeys::RightControl);
     return rloop::encodeAction(X, Y, bAttack);
 }
